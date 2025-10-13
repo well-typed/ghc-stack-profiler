@@ -34,20 +34,26 @@ main = do
           let
             samples =
               messages
+                & simplifySamples
                 & summariseSamples
                 & sortSamples
 
           printSamples (length messages) samples
 
   where
-    summariseSamples = Map.fromListWith (+) . fmap (,1)
+    simplifySamples :: [CallStackMessage] -> [CallStackMessage]
+    simplifySamples =
+      fmap onlyUserStringAnnotations
+
+    summariseSamples =
+      Map.fromListWith (+) . fmap (,1)
 
     sortSamples samples =
       List.sortOn (Down . snd) $ Map.assocs samples
 
     printSamples :: Int -> [(CallStackMessage, Int)] -> IO ()
     printSamples !num samples =
-      mapM_ (\ (s, !n) -> printf " (%-3.2f %%) %s\n" (n `divide` num) (showSample s)) samples
+      mapM_ (\ (s, !n) -> printf " (%6.2f %%) %s\n" (100 * n `divide` num) (showSample s)) samples
 
     showSample :: CallStackMessage -> String
     showSample = show
@@ -55,6 +61,15 @@ main = do
     divide :: Int -> Int -> Double
     divide !x !n =
       fromIntegral x / fromIntegral n
+
+    onlyUserStringAnnotations msg =
+      let
+        go (ThreadSample.UserMessage msg) = Just (ThreadSample.UserMessage msg)
+        go _ = Nothing
+      in
+        msg
+          { callStack = mapMaybe go $ callStack msg
+          }
 
 getSamples :: EventLog -> [Either String CallStackMessage]
 getSamples ev =
