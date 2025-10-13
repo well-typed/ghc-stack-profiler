@@ -84,9 +84,9 @@ instance Binary CallStackMessage where
     putByteString "11"
     putWord32 $ word64ToWord32 $ callThreadId msg
     putWord8 $ intToWord8 $ length $ callStack msg -- TODO: limit number of stack entries to 255
-    putList $ callStack msg
+    mapM_ put $ callStack msg
 
-  get = do
+  get = annotateStackString "CallStackMessage" $ do
     _ <- getByteString 2 -- CA
     _ <- getByteString 2 -- 11
     tid <- getWord32
@@ -104,7 +104,7 @@ instance Binary SourceLocation where
     putStringLen $ functionName loc
     putStringLen $ fileName loc
 
-  get = do
+  get = annotateStackString "SourceLocation" $ do
     MkSourceLocation
       <$> getWord32
       <*> getWord32
@@ -123,7 +123,7 @@ instance Binary StackItem where
       putWord8 3
       put loc
 
-  get = do
+  get = annotateStackString "StackItem" $ do
     getWord8 >>= \ case
       1 -> IpeId <$> getWord64
       2 -> UserMessage <$> getStringLen

@@ -14,10 +14,13 @@ import Data.Function
 import Text.Printf
 import GHC.RTS.Events
 
+import Control.Exception.Backtrace
+
 import ThreadSample
 
 main :: IO ()
 main = do
+  setBacktraceMechanismState IPEBacktrace True
   [name] <- getArgs
   readEventLogFromFile name >>= \ case
     Left err -> do
@@ -44,7 +47,7 @@ main = do
 
     printSamples :: Int -> [(CallStackMessage, Int)] -> IO ()
     printSamples !num samples =
-      mapM_ (\ (s, !n) -> printf " (%3.2f \\%) %s" (n `divide` num) (showSample s)) samples
+      mapM_ (\ (s, !n) -> printf " (%-3.2f %%) %s\n" (n `divide` num) (showSample s)) samples
 
     showSample :: CallStackMessage -> String
     showSample = show
