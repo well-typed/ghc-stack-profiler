@@ -1,13 +1,16 @@
 {-# LANGUAGE NamedFieldPuns    #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE LambdaCase        #-}
 
 module ThreadSample where
 
 import Control.Concurrent
-import Data.ByteString.Builder
+import Control.Monad (replicateM)
+import Data.Binary
+import Data.Binary.Get
+import Data.Binary.Put
 import qualified Data.ByteString.Lazy as LBS
 import Data.Typeable (cast)
-import Data.Word
 import Data.Maybe
 import Unsafe.Coerce
 
@@ -17,7 +20,7 @@ import GHC.Internal.Conc.Sync
 import GHC.Internal.InfoProv.Types (InfoProv(..))
 import GHC.Internal.Heap.Closures
 import GHC.Internal.Stack.CloneStack
-import GHC.Internal.Stack.Decode
+import qualified GHC.Internal.Stack.Decode as Decode
 import GHC.Internal.Stack.Types
 
 import Util
@@ -38,8 +41,11 @@ sampleThread tid = do
 
 serializeThreadSample :: ThreadSample -> IO LBS.ByteString
 serializeThreadSample sample = do
-  frames <- decodeStackWithIpe $ threadSampleStackSnapshot sample
-  pure $ toLazyByteString $ threadStackMessage (threadSampleId sample) frames
+  callStackMessage <- threadSampleToCallStackMessage sample
+  pure $ runPut $ put callStackMessage
+
+deserializeCallStackMessage :: LBS.ByteString -> Either String CallStackMessage
+deserializeCallStackMessage = Right . runGet get
 
 -- Message format:
 --
@@ -54,59 +60,112 @@ serializeThreadSample sample = do
 -- CStringLen
 --   := <length: Word8> <Char>+
 
-threadStackMessage :: ThreadId -> [(StackFrame, Maybe InfoProv)] -> Builder
-threadStackMessage tid entries =
-  mconcat
-    [ byteString "CA"
-    , byteString "11"
-    , putWord32 (word64ToWord32 $ fromThreadId tid)
-    , payload
-    ]
-  where
-    payload = mconcat $ fmap (uncurry encodeEntry) entries
+data CallStackMessage = MkCallStackMessage
+  { callThreadId :: Word64
+  , callStack :: [StackItem]
+  } deriving (Eq, Ord, Show)
 
-encodeEntry :: StackFrame -> Maybe InfoProv -> Builder
-encodeEntry frame mIpe =
+data StackItem
+  = IpeId !Word64
+  | UserMessage !String
+  | SourceLocation !SourceLocation
+  deriving (Eq, Ord, Show)
+
+data SourceLocation = MkSourceLocation
+  { line :: !Word32
+  , column :: !Word32
+  , functionName :: !String
+  , fileName :: !String
+  } deriving (Eq, Ord, Show)
+
+instance Binary CallStackMessage where
+  put msg = do
+    putByteString "CA"
+    putByteString "11"
+    putWord32 $ word64ToWord32 $ callThreadId msg
+    putWord8 $ intToWord8 $ length $ callStack msg -- TODO: limit number of stack entries to 255
+    putList $ callStack msg
+
+  get = do
+    _ <- getByteString 2 -- CA
+    _ <- getByteString 2 -- 11
+    tid <- getWord32
+    len <- getWord8
+    items <- replicateM (word8ToInt len) get
+    pure MkCallStackMessage
+      { callThreadId = word32ToWord64 tid
+      , callStack = items
+      }
+
+instance Binary SourceLocation where
+  put loc = do
+    putWord32 $ line loc
+    putWord32 $ column loc
+    putStringLen $ functionName loc
+    putStringLen $ fileName loc
+
+  get = do
+    MkSourceLocation
+      <$> getWord32
+      <*> getWord32
+      <*> getStringLen
+      <*> getStringLen
+
+instance Binary StackItem where
+  put = \ case
+    IpeId ipeId -> do
+      putWord8 1
+      putWord64 ipeId
+    UserMessage msg -> do
+      putWord8 2
+      putStringLen msg
+    SourceLocation loc -> do
+      putWord8 3
+      put loc
+
+  get = do
+    getWord8 >>= \ case
+      1 -> IpeId <$> getWord64
+      2 -> UserMessage <$> getStringLen
+      3 -> SourceLocation <$> get
+      n -> fail $ "StackItem: Unexpected tag byte encounter: " <> show n
+
+
+threadSampleToCallStackMessage :: ThreadSample -> IO CallStackMessage
+threadSampleToCallStackMessage sample = do
+  frames <- Decode.decodeStackWithIpe $ threadSampleStackSnapshot sample
+  let stackMessages = mapMaybe (uncurry stackFrameToStackItem) frames
+  pure MkCallStackMessage
+    { callThreadId = fromThreadId $ threadSampleId sample
+    , callStack = stackMessages
+    }
+
+stackFrameToStackItem :: StackFrame -> Maybe InfoProv -> Maybe StackItem
+stackFrameToStackItem frame mIpe =
   case frame of
-    AnnFrame {annotation = Box someStackAnno } ->
+    AnnFrame { annotation = Box someStackAnno } ->
       case unsafeCoerce someStackAnno of
         SomeStackAnnotation ann ->
           case cast ann of
-            Just callStackAnn -> encodeCallStackAnno callStackAnn
+            Just (CallStackAnnotation cs) ->
+              case getCallStack cs of
+                [] -> Nothing
+                ((name, sourceLoc):_) ->
+                  Just $ SourceLocation $ MkSourceLocation
+                    { line = intToWord32 $ srcLocStartLine sourceLoc
+                    , column = intToWord32 $ srcLocStartCol sourceLoc
+                    , functionName = name
+                    , fileName = srcLocFile sourceLoc
+                    }
+
             Nothing -> case cast ann of
-              Just stringAnn -> putStringLenAnno stringAnn
-              Nothing -> mempty
+              Just (StringAnnotation msg) ->
+                Just $ UserMessage msg
+              Nothing ->
+                Nothing
     _ ->
-      maybe mempty encodeInfoProv mIpe
+      IpeId . infoProvId <$> mIpe
 
-ipeEntry :: Word8
-ipeEntry = 1
-
-stringEntry :: Word8
-stringEntry = 2
-
-sourceLocEntry :: Word8
-sourceLocEntry = 3
-
-encodeInfoProv :: InfoProv -> Builder
-encodeInfoProv (InfoProv {ipProvId}) =
-  word8 ipeEntry <> putWord64 ipProvId
-
-putStringLenAnno :: StringAnnotation -> Builder
-putStringLenAnno (StringAnnotation msg) =
-  putStringLenWithTag stringEntry msg
-
-encodeCallStackAnno :: CallStackAnnotation -> Builder
-encodeCallStackAnno (CallStackAnnotation cs) = case getCallStack cs of
-  [] -> mempty
-  ((name, sourceLoc):_) ->
-    word8 sourceLocEntry <> encodeSourceLocation name sourceLoc
-
-encodeSourceLocation :: String -> SrcLoc -> Builder
-encodeSourceLocation name srcLoc =
-  mconcat
-    [ putWord32 (intToWord32 $ srcLocStartLine srcLoc)
-    , putWord32 (intToWord32 $ srcLocStartCol srcLoc)
-    , putStringLen (srcLocFile srcLoc)
-    , putStringLen name
-    ]
+infoProvId :: InfoProv -> Word64
+infoProvId (InfoProv {ipProvId}) =
+  ipProvId
