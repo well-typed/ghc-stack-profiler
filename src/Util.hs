@@ -49,6 +49,9 @@ word32ToInt = fromIntegral
 word64ToInt :: Word64 -> Int
 word64ToInt = fromIntegral
 
+intToWord64 :: Int -> Word64
+intToWord64 = fromIntegral
+
 intToWord32 :: Int -> Word32
 intToWord32 = fromIntegral
 

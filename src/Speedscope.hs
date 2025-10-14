@@ -337,11 +337,11 @@ isInfoEvent UserBinaryMessage {}  = True
 isInfoEvent _ = False
 
 mkProfile :: Text -> Word64 -> (Word64, [[Int]]) -> Profile
-mkProfile pname interval (_n, samples) = SampledProfile sampledProfile
+mkProfile pname interval (n, samples) = SampledProfile sampledProfile
   where
     sampledProfile = MkSampledProfile
       { unit       = Nanoseconds
-      , name       = pname
+      , name       = pname <> " " <> Text.show n
       , startValue = 0
       , endValue   = length samples
       , weights    = fromIntegral <$> sample_weights

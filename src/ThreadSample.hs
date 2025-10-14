@@ -27,19 +27,31 @@ import GHC.Internal.Stack.Types
 
 import Util
 
+newtype CapabilityId =
+  CapabilityId
+    { getCapabilityId :: Word64
+    }
+  deriving (Show, Eq, Ord)
+
 data ThreadSample =
   ThreadSample
     { threadSampleId :: ThreadId
+    , threadSampleCapability :: CapabilityId
     , threadSampleStackSnapshot :: StackSnapshot
     }
 
-sampleThread :: ThreadId -> IO ThreadSample
+sampleThread :: ThreadId -> IO (Maybe ThreadSample)
 sampleThread tid = do
-  stack <- cloneThreadStack tid
-  pure ThreadSample
-    { threadSampleId = tid
-    , threadSampleStackSnapshot = stack
-    }
+  (cap, blocked) <- threadCapability tid
+  if blocked
+    then pure Nothing
+    else do
+      stack <- cloneThreadStack tid
+      pure $ Just $ ThreadSample
+        { threadSampleId = tid
+        , threadSampleCapability = CapabilityId $ intToWord64 cap
+        , threadSampleStackSnapshot = stack
+        }
 
 serializeThreadSample :: ThreadSample -> IO LBS.ByteString
 serializeThreadSample sample = do
@@ -54,7 +66,7 @@ deserializeCallStackMessage = Right . runGet get
 -- MESSAGE
 --  := "CA" "11" <STACK>
 -- STACK
---  := <threadId: Word32> <ENTRY>+
+--  := <capability: Word32> <threadId: Word32> <length: Word32> <ENTRY>+
 -- ENTRY
 --  := "01" <ipe: Word64>
 --   | "02" <string: STRING>
@@ -62,10 +74,13 @@ deserializeCallStackMessage = Right . runGet get
 -- CStringLen
 --   := <length: Word8> <Char>+
 
-data CallStackMessage = MkCallStackMessage
-  { callThreadId :: Word64
-  , callStack :: [StackItem]
-  } deriving (Eq, Ord, Show)
+data CallStackMessage =
+  MkCallStackMessage
+    { callThreadId :: Word64
+    , callCapabilityId :: CapabilityId
+    , callStack :: [StackItem]
+    }
+  deriving (Eq, Ord, Show)
 
 data StackItem
   = IpeId !Word64
@@ -73,29 +88,34 @@ data StackItem
   | SourceLocation !SourceLocation
   deriving (Eq, Ord, Show)
 
-data SourceLocation = MkSourceLocation
-  { line :: !Word32
-  , column :: !Word32
-  , functionName :: !Text
-  , fileName :: !Text
-  } deriving (Eq, Ord, Show)
+data SourceLocation =
+  MkSourceLocation
+    { line :: !Word32
+    , column :: !Word32
+    , functionName :: !Text
+    , fileName :: !Text
+    }
+  deriving (Eq, Ord, Show)
 
 instance Binary CallStackMessage where
   put msg = do
     putByteString "CA"
     putByteString "11"
     putWord32 $ word64ToWord32 $ callThreadId msg
-    putWord8 $ intToWord8 $ length $ callStack msg -- TODO: limit number of stack entries to 255
+    putWord32 $ word64ToWord32 $ getCapabilityId $ callCapabilityId msg
+    putWord32 $ intToWord32 $ length $ callStack msg -- TODO: limit number of stack entries to 2^32
     mapM_ put $ callStack msg
 
   get = do
     _ <- getByteString 2 -- CA
     _ <- getByteString 2 -- 11
     tid <- getWord32
-    len <- getWord8
-    items <- replicateM (word8ToInt len) get
+    capId <- getWord32
+    len <- getWord32
+    items <- replicateM (word32ToInt len) get
     pure MkCallStackMessage
       { callThreadId = word32ToWord64 tid
+      , callCapabilityId = CapabilityId $ word32ToWord64 capId
       , callStack = items
       }
 
@@ -139,6 +159,7 @@ threadSampleToCallStackMessage sample = do
   let stackMessages = mapMaybe (uncurry stackFrameToStackItem) frames
   pure MkCallStackMessage
     { callThreadId = fromThreadId $ threadSampleId sample
+    , callCapabilityId = threadSampleCapability sample
     , callStack = stackMessages
     }
 
