@@ -43,6 +43,12 @@ word64ToWord32 = fromIntegral
 word32ToWord64 :: Word32 -> Word64
 word32ToWord64 = fromIntegral
 
+word32ToInt :: Word32 -> Int
+word32ToInt = fromIntegral
+
+word64ToInt :: Word64 -> Int
+word64ToInt = fromIntegral
+
 intToWord32 :: Int -> Word32
 intToWord32 = fromIntegral
 

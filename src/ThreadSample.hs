@@ -10,16 +10,18 @@ import Data.Binary
 import Data.Binary.Get
 import Data.Binary.Put
 import qualified Data.ByteString.Lazy as LBS
+import Data.Text (Text)
+import qualified Data.Text as Text
 import Data.Typeable (cast)
 import Data.Maybe
 import Unsafe.Coerce
 
 import GHC.Stack.Annotation.Experimental
 
+import GHC.Stack.CloneStack (StackSnapshot, cloneThreadStack)
 import GHC.Internal.Conc.Sync
 import GHC.Internal.InfoProv.Types (InfoProv(..))
 import GHC.Internal.Heap.Closures
-import GHC.Internal.Stack.CloneStack
 import qualified GHC.Internal.Stack.Decode as Decode
 import GHC.Internal.Stack.Types
 
@@ -74,8 +76,8 @@ data StackItem
 data SourceLocation = MkSourceLocation
   { line :: !Word32
   , column :: !Word32
-  , functionName :: !String
-  , fileName :: !String
+  , functionName :: !Text
+  , fileName :: !Text
   } deriving (Eq, Ord, Show)
 
 instance Binary CallStackMessage where
@@ -86,7 +88,7 @@ instance Binary CallStackMessage where
     putWord8 $ intToWord8 $ length $ callStack msg -- TODO: limit number of stack entries to 255
     mapM_ put $ callStack msg
 
-  get = annotateStackString "CallStackMessage" $ do
+  get = do
     _ <- getByteString 2 -- CA
     _ <- getByteString 2 -- 11
     tid <- getWord32
@@ -101,15 +103,15 @@ instance Binary SourceLocation where
   put loc = do
     putWord32 $ line loc
     putWord32 $ column loc
-    putStringLen $ functionName loc
-    putStringLen $ fileName loc
+    putStringLen $ Text.unpack $ functionName loc
+    putStringLen $ Text.unpack $ fileName loc
 
-  get = annotateStackString "SourceLocation" $ do
+  get = do
     MkSourceLocation
       <$> getWord32
       <*> getWord32
-      <*> getStringLen
-      <*> getStringLen
+      <*> (Text.pack <$> getStringLen)
+      <*> (Text.pack <$> getStringLen)
 
 instance Binary StackItem where
   put = \ case
@@ -154,8 +156,8 @@ stackFrameToStackItem frame mIpe =
                   Just $ SourceLocation $ MkSourceLocation
                     { line = intToWord32 $ srcLocStartLine sourceLoc
                     , column = intToWord32 $ srcLocStartCol sourceLoc
-                    , functionName = name
-                    , fileName = srcLocFile sourceLoc
+                    , functionName = Text.pack $ name
+                    , fileName = Text.pack $ srcLocFile sourceLoc
                     }
 
             Nothing -> case cast ann of
