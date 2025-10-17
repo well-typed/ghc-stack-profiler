@@ -1,6 +1,7 @@
 {-# LANGUAGE NamedFieldPuns    #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE LambdaCase        #-}
+{-# LANGUAGE MagicHash         #-}
 
 module ThreadSample where
 
@@ -14,13 +15,13 @@ import Data.Text (Text)
 import qualified Data.Text as Text
 import Data.Typeable (cast)
 import Data.Maybe
+import qualified Data.List.NonEmpty as NonEmpty
 import Unsafe.Coerce
 
 import GHC.Stack.Annotation.Experimental
-
-import GHC.Stack.CloneStack (StackSnapshot, cloneThreadStack)
+import GHC.Stack.CloneStack (StackSnapshot(..), cloneThreadStack)
 import GHC.Internal.Conc.Sync
-import GHC.Internal.InfoProv.Types (InfoProv(..))
+import GHC.Internal.InfoProv.Types (lookupIpProvId)
 import GHC.Internal.Heap.Closures
 import qualified GHC.Internal.Stack.Decode as Decode
 import GHC.Internal.Stack.Types
@@ -101,18 +102,18 @@ instance Binary CallStackMessage where
   put msg = do
     putByteString "CA"
     putByteString "11"
-    putWord32 $ word64ToWord32 $ callThreadId msg
     putWord32 $ word64ToWord32 $ getCapabilityId $ callCapabilityId msg
-    putWord32 $ intToWord32 $ length $ callStack msg -- TODO: limit number of stack entries to 2^32
+    putWord32 $ word64ToWord32 $ callThreadId msg
+    putWord8 $ intToWord8 $ min cutOffLength $ length $ callStack msg -- TODO: limit number of stack entries to 2^32
     mapM_ put $ callStack msg
 
   get = do
     _ <- getByteString 2 -- CA
     _ <- getByteString 2 -- 11
-    tid <- getWord32
     capId <- getWord32
-    len <- getWord32
-    items <- replicateM (word32ToInt len) get
+    tid <- getWord32
+    len <- getWord8
+    items <- replicateM (word8ToInt len) get
     pure MkCallStackMessage
       { callThreadId = word32ToWord64 tid
       , callCapabilityId = CapabilityId $ word32ToWord64 capId
@@ -145,25 +146,52 @@ instance Binary StackItem where
       putWord8 3
       put loc
 
-  get = annotateStackString "StackItem" $ do
+  get = do
     getWord8 >>= \ case
       1 -> IpeId <$> getWord64
       2 -> UserMessage <$> getStringLen
       3 -> SourceLocation <$> get
       n -> fail $ "StackItem: Unexpected tag byte encounter: " <> show n
 
+decodeStackWithIpProvId :: StackSnapshot -> IO [(StackFrame, Maybe Word64)]
+decodeStackWithIpProvId snapshot = do
+  concat . snd <$> Decode.decodeStackWithFrameUnpack unpackStackFrameWithIpProvId snapshot
+
+unpackStackFrameWithIpProvId :: Decode.StackFrameLocation -> IO [(StackFrame, Maybe Word64)]
+unpackStackFrameWithIpProvId stackFrameLoc = do
+  Decode.unpackStackFrameTo stackFrameLoc
+    (\ info infoKey nextChunk@(StackSnapshot stack#) -> do
+      framesWithIpe <- decodeStackWithIpProvId nextChunk
+      mIpeId <- lookupIpProvId infoKey
+      pure
+        [ ( UnderflowFrame
+            { info_tbl = info,
+              nextChunk =
+                GenStgStackClosure
+                  { ssc_info = info,
+                    ssc_stack_size = Decode.getStackFields stack#,
+                    ssc_stack = map fst framesWithIpe
+                  }
+            }
+          , mIpeId
+          )
+        ]
+    )
+    (\ frame infoKey -> do
+      mIpeId <- lookupIpProvId infoKey
+      pure [(frame, mIpeId)])
 
 threadSampleToCallStackMessage :: ThreadSample -> IO CallStackMessage
 threadSampleToCallStackMessage sample = do
-  frames <- Decode.decodeStackWithIpe $ threadSampleStackSnapshot sample
-  let stackMessages = mapMaybe (uncurry stackFrameToStackItem) frames
+  frames <- decodeStackWithIpProvId $ threadSampleStackSnapshot sample
+  let stackMessages = fmap NonEmpty.head . NonEmpty.group $ mapMaybe (uncurry stackFrameToStackItem) frames
   pure MkCallStackMessage
     { callThreadId = fromThreadId $ threadSampleId sample
     , callCapabilityId = threadSampleCapability sample
     , callStack = stackMessages
     }
 
-stackFrameToStackItem :: StackFrame -> Maybe InfoProv -> Maybe StackItem
+stackFrameToStackItem :: StackFrame -> Maybe Word64 -> Maybe StackItem
 stackFrameToStackItem frame mIpe =
   case frame of
     AnnFrame { annotation = Box someStackAnno } ->
@@ -187,8 +215,4 @@ stackFrameToStackItem frame mIpe =
               Nothing ->
                 Nothing
     _ ->
-      IpeId . infoProvId <$> mIpe
-
-infoProvId :: InfoProv -> Word64
-infoProvId (InfoProv {ipProvId}) =
-  ipProvId
+      IpeId <$> mIpe

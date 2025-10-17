@@ -1,5 +1,21 @@
 {-# LANGUAGE LambdaCase #-}
-module Sampler where
+module Sampler (
+  -- * Run sample profiler
+  withSampleProfiler,
+  withSampleProfilerForMyThread,
+  withSampleProfilerForThread,
+  -- * Configuration of sample profiler
+  SamplerProfilerConfig(..),
+  -- * Low level helpers for setting up custom
+  -- sample profilers threads
+  runWithSampleProfiler,
+  setupSampleProfiler,
+  tearDownSamplers,
+  sampleToEventlog,
+  -- * Thread filtering
+  isProfilerThread,
+  isRtsThread,
+  ) where
 
 import Control.Concurrent
 import Control.Exception
@@ -10,56 +26,76 @@ import GHC.Conc
 import GHC.Conc.Sync
 
 import Debug.Trace.Binary
+import Debug.Trace.Flags
 
 import ThreadSample
 
-data SamplerThread = MkSamplerThread
+data SamplerProfilerConfig = MkSamplerProfilerConfig
   { samplerThreadId :: ThreadId
   } deriving (Show, Eq, Ord)
 
 withSampleProfiler :: Int -> IO a -> IO a
 withSampleProfiler delay act = do
-  bracket setupSamplers tearDownSamplers (const act)
+  runWithSampleProfiler sampleAction delay act
   where
-    setupSamplers = do
-      samplerThreadConfigMVar <- newEmptyMVar
-      sid <- forkIO $ do
-        config <- takeMVar samplerThreadConfigMVar
-        sampleThreadId <- myThreadId
-        labelThread sampleThreadId "Sample Profiler Thread"
-        forever $ do
-          tids <- listThreads
-          userThreads <- filterM (isThreadOfInterest config) tids
-          forM_ userThreads $ \tid ->
-            sampleToEventlog tid
-          -- TODO: this is wrong, we don't sample every delay time as sampling takes time as well
-          threadDelay delay
+    sampleAction config = do
+      tids <- listThreads
+      userThreads <- filterM (isThreadOfInterest config) tids
+      forM_ userThreads $ \tid ->
+        sampleToEventlog tid
 
-      let sampleThreadConf = MkSamplerThread
-            { samplerThreadId = sid
-            }
-      putMVar samplerThreadConfigMVar sampleThreadConf
-      pure sampleThreadConf
-
-    tearDownSamplers MkSamplerThread{samplerThreadId} =
-      killThread samplerThreadId
-
-    isThreadOfInterest :: SamplerThread -> ThreadId -> IO Bool
+    isThreadOfInterest :: SamplerProfilerConfig -> ThreadId -> IO Bool
     isThreadOfInterest config tid = do
       lbl <- threadLabel tid
       pure $ not $ or
         [ isProfilerThread config tid lbl
-        , isBuiltinThread tid lbl
+        , isRtsThread tid lbl
         ]
 
-isProfilerThread :: SamplerThread -> ThreadId -> Maybe String -> Bool
-isProfilerThread MkSamplerThread {samplerThreadId} tid lbl = tid == samplerThreadId
+withSampleProfilerForMyThread :: Int -> IO a -> IO a
+withSampleProfilerForMyThread delay act = do
+  tid <- myThreadId
+  withSampleProfilerForThread tid delay act
 
-isBuiltinThread :: ThreadId -> Maybe String -> Bool
-isBuiltinThread _    Nothing    = False
-isBuiltinThread _tid (Just lbl) =
+withSampleProfilerForThread :: ThreadId -> Int -> IO a -> IO a
+withSampleProfilerForThread tid delay act =
+  runWithSampleProfiler (const (sampleToEventlog tid)) delay act
+
+runWithSampleProfiler :: (SamplerProfilerConfig -> IO ()) -> Int -> IO a -> IO a
+runWithSampleProfiler sampleAction delay act = do
+  if userTracingEnabled
+    then act
+    else bracket (setupSampleProfiler sampleAction delay) tearDownSamplers (const act)
+
+tearDownSamplers :: SamplerProfilerConfig -> IO ()
+tearDownSamplers MkSamplerProfilerConfig{samplerThreadId} =
+  killThread samplerThreadId
+
+setupSampleProfiler :: (SamplerProfilerConfig -> IO ()) -> Int -> IO SamplerProfilerConfig
+setupSampleProfiler sampleAction delay = do
+  samplerThreadConfigMVar <- newEmptyMVar
+  sid <- forkIO $ do
+    config <- takeMVar samplerThreadConfigMVar
+    sampleThreadId <- myThreadId
+    labelThread sampleThreadId "Sample Profiler Thread"
+    forever $ do
+      sampleAction config
+      -- TODO: this is wrong, we don't sample every delay time as sampling takes time as well
+      threadDelay delay
+
+  let sampleThreadConf = MkSamplerProfilerConfig
+        { samplerThreadId = sid
+        }
+  putMVar samplerThreadConfigMVar sampleThreadConf
+  pure sampleThreadConf
+
+isProfilerThread :: SamplerProfilerConfig -> ThreadId -> Maybe String -> Bool
+isProfilerThread MkSamplerProfilerConfig {samplerThreadId} tid _lbl = tid == samplerThreadId
+
+isRtsThread :: ThreadId -> Maybe String -> Bool
+isRtsThread _    Nothing    = False
+isRtsThread _tid (Just lbl) =
   lbl `elem` ["TimerManager"] || "IOManager on cap" `List.isPrefixOf` lbl
-
 
 sampleToEventlog :: ThreadId -> IO ()
 sampleToEventlog tid = do

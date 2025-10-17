@@ -31,6 +31,8 @@ import Speedscope.Schema
 import Text.ParserCombinators.ReadP hiding (between)
 import Data.Map (Map)
 import qualified Data.Map.Strict as Map
+import Data.IntMap (IntMap)
+import qualified Data.IntMap.Strict as IntMap
 import Data.Coerce (coerce)
 
 import ThreadSample
@@ -171,13 +173,20 @@ convertToSpeedscope (is, ie) considerEvent processEvents (EventLog _h (Data (sor
           , exporter           = Just $ fromString version_string
           }
   where
-    Identity (EventLogProfile (fromMaybe "" -> profile_name) el_version (fromMaybe 1 -> interval) infoProvs userCostCentres _counter samples) =
+    Identity (EventLogProfile (fromMaybe "" -> profile_name) el_version (fromMaybe 1 -> interval) _infoProvs userCostCentres _counter samples) =
         foldlT processEvents initEL $
             source es ~>
             delimit considerEvent (markers (is, ie))
 
-    initEL = EventLogProfile Nothing Nothing Nothing Map.empty Map.empty 0 []
-
+    initEL = EventLogProfile
+      { prog_name = Nothing
+      , rts_version = Nothing
+      , prof_interval = Nothing
+      , info_provs = IntMap.empty
+      , user_cost_centres = Map.empty
+      , cost_centre_counter = 0
+      , el_samples = []
+      }
 
     version_string :: String
     version_string = "hs-speedscope@" ++ CURRENT_PACKAGE_VERSION
@@ -185,26 +194,15 @@ convertToSpeedscope (is, ie) considerEvent processEvents (EventLog _h (Data (sor
     all_frames :: [Frame]
     all_frames =
       map snd . sortOn fst $
-        map (fmap mkUserFrame) (Map.elems userCostCentres) <>
-        map (fmap mkInfoFrame) (Map.elems infoProvs)
+        map (fmap mkCostCentreFrame) (Map.elems userCostCentres)
 
     thread_samples :: [(Word64, [[Int]])]
     thread_samples =
       -- groupSort is assumed to be stable
       groupSort $ mapMaybe mkSample (reverse samples)
 
-    mkInfoFrame :: InfoProv -> Frame
-    mkInfoFrame InfoProv{infoProvLabel,infoProvSrcLoc} = Frame
-      { name = infoProvLabel
-      , file = fileName
-      , col = columnM
-      , line = lineM
-      }
-      where
-        (fileName, columnM, lineM) = tryParsingGhcSrcSpan infoProvSrcLoc
-
-    mkUserFrame :: UserCostCentre -> Frame
-    mkUserFrame = \ case
+    mkCostCentreFrame :: UserCostCentre -> Frame
+    mkCostCentreFrame = \ case
       CostCentreMessage msg ->
         Frame
           { name = msg
@@ -219,6 +217,19 @@ convertToSpeedscope (is, ie) considerEvent processEvents (EventLog _h (Data (sor
           , col = Just $ word32ToInt $  ThreadSample.column loc
           , line = Just $ word32ToInt $ ThreadSample.line loc
           }
+      CostCentreIpe InfoProv{infoTableName, infoProvModule, infoProvLabel, infoProvSrcLoc} ->
+        Frame
+          { name =
+              if Text.null infoProvLabel
+                then infoProvModule <> " " <> infoTableName
+                else infoProvModule <> " " <> infoProvLabel
+          , file = if infoProvSrcLoc == ":" then Just infoProvModule else  fileName
+          , col = columnM
+          , line = lineM
+          }
+        where
+          (fileName, lineM, columnM) = tryParsingGhcSrcSpan infoProvSrcLoc
+
 
 
     mkSample :: Sample -> Maybe (Word64, [Int])
@@ -264,24 +275,25 @@ processEventsDefault elProf (Event _t ei _c) =
       elProf { rts_version = parseIdent rts_ident }
     ProfBegin ival ->
       elProf { prof_interval = Just ival }
-    InfoTableProv { itInfo, itLabel, itSrcLoc, itModule } ->
+    InfoTableProv { itTableName, itClosureDesc, itTyDesc, itInfo, itLabel, itSrcLoc, itModule } ->
       let
-        cid = cost_centre_counter elProf
         key = InfoProvId itInfo
         prov = InfoProv
           { infoProvId = InfoProvId itInfo
           , infoProvSrcLoc = itSrcLoc
           , infoProvModule = itModule
           , infoProvLabel = itLabel
+          , infoTableName = itTableName
+          , infoClosureDesc = itClosureDesc
+          , infoTyDesc = itTyDesc
           }
       in
         elProf
-          { info_provs = Map.insert key (cid, prov) (info_provs elProf)
-          , cost_centre_counter = cid + 1
+          { info_provs = IntMap.insert (word64ToInt $ coerce key) prov (info_provs elProf)
           }
     UserBinaryMessage bs ->
       case deserializeCallStackMessage $ LBS.fromStrict bs of
-        Left _ ->
+        Left _err ->
           elProf
         Right csMsg ->
           addCallStackToProfile elProf csMsg
@@ -306,7 +318,7 @@ addCallStackToProfile elProf MkCallStackMessage{callThreadId, callStack} =
 lookupOrAddStackItemToProfile :: EventLogProfile -> StackItem -> (CostCentreId, EventLogProfile)
 lookupOrAddStackItemToProfile elProf = \ case
   IpeId iid ->
-    (fst $ info_provs elProf Map.! InfoProvId iid, elProf)
+    lookupOrInsertCostCentre (CostCentreIpe (info_provs elProf IntMap.! word64ToInt iid))
   ThreadSample.UserMessage msg ->
     lookupOrInsertCostCentre (CostCentreMessage $ fromString msg)
   SourceLocation loc ->
@@ -326,7 +338,6 @@ lookupOrAddStackItemToProfile elProf = \ case
               , user_cost_centres = Map.insert key (cid, key) (user_cost_centres elProf)
               }
             )
-
 
 isInfoEvent :: EventInfo -> Bool
 isInfoEvent ProgramArgs {}        = True
@@ -367,7 +378,7 @@ data EventLogProfile = EventLogProfile
     { prog_name :: Maybe Text
     , rts_version :: Maybe (Version, Text)
     , prof_interval :: Maybe Word64
-    , info_provs :: Map InfoProvId (CostCentreId, InfoProv)
+    , info_provs :: IntMap InfoProv
     , user_cost_centres :: Map UserCostCentre (CostCentreId, UserCostCentre)
     , cost_centre_counter :: !CostCentreId
     , el_samples :: [Sample]
@@ -383,6 +394,7 @@ newtype InfoProvId = InfoProvId Word64
 data UserCostCentre
   = CostCentreMessage !Text
   | CostCentreSrcLoc !SourceLocation
+  | CostCentreIpe !InfoProv
   deriving (Eq, Ord, Show)
 
 data InfoProv = InfoProv
@@ -390,6 +402,9 @@ data InfoProv = InfoProv
   , infoProvSrcLoc :: Text
   , infoProvModule :: Text
   , infoProvLabel :: Text
+  , infoTableName :: Text
+  , infoClosureDesc :: Int
+  , infoTyDesc :: Text
   }  deriving (Eq, Ord, Show)
 
 data Sample = Sample
