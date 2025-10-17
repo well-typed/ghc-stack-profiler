@@ -67,7 +67,7 @@ deserializeCallStackMessage = Right . runGet get
 -- MESSAGE
 --  := "CA" "11" <STACK>
 -- STACK
---  := <capability: Word32> <threadId: Word32> <length: Word32> <ENTRY>+
+--  := <capability: Word32> <threadId: Word32> <length: Word8> <ENTRY>+
 -- ENTRY
 --  := "01" <ipe: Word64>
 --   | "02" <string: STRING>
