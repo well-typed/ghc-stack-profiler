@@ -25,9 +25,7 @@ import qualified Data.List as List
 import GHC.Conc
 import GHC.Conc.Sync
 
-import Debug.Trace.Binary
-import Debug.Trace.Flags
-
+import qualified Gap
 import ThreadSample
 
 data SamplerProfilerConfig = MkSamplerProfilerConfig
@@ -63,7 +61,7 @@ withSampleProfilerForThread tid delay act =
 
 runWithSampleProfiler :: (SamplerProfilerConfig -> IO ()) -> Int -> IO a -> IO a
 runWithSampleProfiler sampleAction delay act = do
-  if userTracingEnabled
+  if Gap.userTracingEnabled
     then act
     else bracket (setupSampleProfiler sampleAction delay) tearDownSamplers (const act)
 
@@ -103,4 +101,4 @@ sampleToEventlog tid = do
     Nothing -> pure ()
     Just threadSample -> do
       msg <- serializeThreadSample threadSample
-      traceBinaryEventIO $ LBS.toStrict msg
+      Gap.traceBinaryEventIO $ LBS.toStrict msg

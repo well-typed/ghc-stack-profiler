@@ -31,11 +31,17 @@ putWord64 = putWord64be
 putWord32 :: Word32 -> Put
 putWord32 = putWord32be
 
+putWord16 :: Word16 -> Put
+putWord16 = putWord16be
+
 getWord64 :: Get Word64
 getWord64 = getWord64be
 
 getWord32 :: Get Word32
 getWord32 = getWord32be
+
+getWord16 :: Get Word16
+getWord16 = getWord16be
 
 word64ToWord32 :: Word64 -> Word32
 word64ToWord32 = fromIntegral

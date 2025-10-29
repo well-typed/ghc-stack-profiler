@@ -18,7 +18,7 @@ executable simple
     main-is:          Main.hs
     build-depends:
         base,
-        ghc-annotation-eventlog,
+        ghc-sampler-eventlog,
         ghc-experimental,
     hs-source-dirs:   app
     default-language: Haskell2010

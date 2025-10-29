@@ -1,4 +1,4 @@
-# Revision history for ghc-annotation-eventlog
+# Revision history for sampler-speedscope
 
 ## 0.1.0.0 -- YYYY-mm-dd
 

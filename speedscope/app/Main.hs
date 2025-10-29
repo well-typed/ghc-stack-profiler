@@ -3,7 +3,6 @@
 module Main where
 
 import Control.Exception.Backtrace
-
 import Speedscope
 
 main :: IO ()

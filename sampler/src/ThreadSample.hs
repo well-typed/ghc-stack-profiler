@@ -104,8 +104,10 @@ instance Binary CallStackMessage where
     putByteString "11"
     putWord32 $ word64ToWord32 $ getCapabilityId $ callCapabilityId msg
     putWord32 $ word64ToWord32 $ callThreadId msg
-    putWord8 $ intToWord8 $ min cutOffLength $ length $ callStack msg -- TODO: limit number of stack entries to 2^32
-    mapM_ put $ callStack msg
+    -- limit number of items to serialise to 'cutOffLength'
+    let items = take cutOffLength $ callStack msg
+    putWord8 $ intToWord8 $ length items
+    mapM_ put items
 
   get = do
     _ <- getByteString 2 -- CA
@@ -155,31 +157,31 @@ instance Binary StackItem where
 
 decodeStackWithIpProvId :: StackSnapshot -> IO [(StackFrame, Maybe Word64)]
 decodeStackWithIpProvId snapshot = do
-  concat . snd <$> Decode.decodeStackWithFrameUnpack unpackStackFrameWithIpProvId snapshot
+  snd <$> Decode.decodeStackWithFrameUnpack unpackStackFrameWithIpProvId snapshot
 
-unpackStackFrameWithIpProvId :: Decode.StackFrameLocation -> IO [(StackFrame, Maybe Word64)]
+unpackStackFrameWithIpProvId :: Decode.StackFrameLocation -> IO (StackFrame, Maybe Word64)
 unpackStackFrameWithIpProvId stackFrameLoc = do
   Decode.unpackStackFrameTo stackFrameLoc
     (\ info infoKey nextChunk@(StackSnapshot stack#) -> do
       framesWithIpe <- decodeStackWithIpProvId nextChunk
       mIpeId <- lookupIpProvId infoKey
       pure
-        [ ( UnderflowFrame
-            { info_tbl = info,
-              nextChunk =
-                GenStgStackClosure
-                  { ssc_info = info,
-                    ssc_stack_size = Decode.getStackFields stack#,
-                    ssc_stack = map fst framesWithIpe
-                  }
-            }
-          , mIpeId
-          )
-        ]
+        ( UnderflowFrame
+          { info_tbl = info,
+            nextChunk =
+              GenStgStackClosure
+                { ssc_info = info,
+                  ssc_stack_size = Decode.getStackFields stack#,
+                  ssc_stack = map fst framesWithIpe
+                }
+          }
+        , mIpeId
+        )
+
     )
     (\ frame infoKey -> do
       mIpeId <- lookupIpProvId infoKey
-      pure [(frame, mIpeId)])
+      pure (frame, mIpeId))
 
 threadSampleToCallStackMessage :: ThreadSample -> IO CallStackMessage
 threadSampleToCallStackMessage sample = do

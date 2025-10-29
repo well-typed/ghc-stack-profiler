@@ -1,0 +1,56 @@
+cabal-version: 3.8
+name: sampler-speedscope
+version: 0.1.0.0
+license: NONE
+author: fendor
+maintainer: fendor@posteo.de
+build-type: Simple
+extra-doc-files: CHANGELOG.md
+
+common warnings
+  ghc-options:
+    -Wall
+    -Wunused-packages
+
+library
+  import:
+    warnings
+
+  exposed-modules:
+    Speedscope
+
+  build-depends:
+    aeson,
+    base,
+    binary,
+    bytestring,
+    containers,
+    extra,
+    ghc-events,
+    ghc-sampler-eventlog,
+    ghc-trace-events,
+    hs-speedscope,
+    machines,
+    optparse-applicative,
+    text,
+
+  hs-source-dirs:
+    src
+
+  default-language: GHC2021
+
+executable ghc-sample-speedscope
+  import:
+    warnings
+
+  hs-source-dirs:
+    app
+
+  main-is:
+    Main.hs
+
+  build-depends:
+    base,
+    sampler-speedscope,
+
+  default-language: GHC2021

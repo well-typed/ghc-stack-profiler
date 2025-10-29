@@ -1,0 +1,46 @@
+cabal-version: 3.8
+name: ghc-sampler-eventlog
+version: 0.1.0.0
+license: NONE
+author: fendor
+maintainer: fendor@posteo.de
+build-type: Simple
+extra-doc-files: CHANGELOG.md
+
+common warnings
+  ghc-options: -Wall
+
+flag use-ghc-trace-events
+  description: Use the package 'ghc-trace-events'
+  manual: True
+  default: True
+
+library
+  import:
+    warnings
+
+  exposed-modules:
+    Gap
+    Sampler
+    ThreadSample
+    Util
+
+  build-depends:
+    base,
+    binary,
+    bytestring,
+    ghc-experimental,
+    ghc-internal,
+    ghc-prim,
+    text,
+
+  if flag(use-ghc-trace-events)
+    cpp-options:
+        -DUSE_GHC_TRACE_EVENTS
+    build-depends:
+        ghc-trace-events,
+
+  hs-source-dirs:
+    src
+
+  default-language: GHC2021
