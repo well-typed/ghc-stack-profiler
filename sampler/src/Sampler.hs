@@ -62,8 +62,8 @@ withSampleProfilerForThread tid delay act =
 runWithSampleProfiler :: (SamplerProfilerConfig -> IO ()) -> Int -> IO a -> IO a
 runWithSampleProfiler sampleAction delay act = do
   if Gap.userTracingEnabled
-    then act
-    else bracket (setupSampleProfiler sampleAction delay) tearDownSamplers (const act)
+    then bracket (setupSampleProfiler sampleAction delay) tearDownSamplers (const act)
+    else act
 
 tearDownSamplers :: SamplerProfilerConfig -> IO ()
 tearDownSamplers MkSamplerProfilerConfig{samplerThreadId} =
