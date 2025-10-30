@@ -22,13 +22,11 @@ library
   build-depends:
     aeson,
     base,
-    binary,
     bytestring,
     containers,
     extra,
     ghc-events,
     ghc-sampler-eventlog,
-    ghc-trace-events,
     hs-speedscope,
     machines,
     optparse-applicative,
