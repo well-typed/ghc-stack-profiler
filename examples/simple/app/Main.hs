@@ -2,7 +2,7 @@
 module Main where
 
 import GHC.Stack.Annotation.Experimental
-import Sampler
+import GHC.Stack.Profiler.Sampler
 
 main :: IO ()
 main = withSampleProfiler 10_000 {- 10 ms -} $ do

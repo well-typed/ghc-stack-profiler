@@ -1,12 +1,7 @@
-{-# language CPP #-}
-{-# language DuplicateRecordFields #-}
-{-# language NamedFieldPuns #-}
-{-# language OverloadedStrings #-}
-{-# language ViewPatterns #-}
-{-# LANGUAGE LambdaCase        #-}
-{-# LANGUAGE DerivingStrategies        #-}
+{-# LANGUAGE CPP               #-}
+{-# LANGUAGE OverloadedStrings #-}
 
-module Speedscope where
+module GHC.Stack.Profiler.Speedscope where
 
 import Data.String ( fromString )
 import Control.Monad
@@ -35,8 +30,8 @@ import Data.IntMap (IntMap)
 import qualified Data.IntMap.Strict as IntMap
 import Data.Coerce (coerce)
 
-import ThreadSample
-import Util
+import GHC.Stack.Profiler.ThreadSample as ThreadSample
+import GHC.Stack.Profiler.Util
 
 data SSOptions = SSOptions
   { file :: FilePath

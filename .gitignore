@@ -4,4 +4,3 @@ cabal.project.local
 *.eventlog.json
 *.eventlog.html
 *.hp
-

@@ -1,5 +1,4 @@
-{-# LANGUAGE LambdaCase #-}
-module Sampler (
+module GHC.Stack.Profiler.Sampler (
   -- * Run sample profiler
   withSampleProfiler,
   withSampleProfilerForMyThread,
@@ -29,9 +28,9 @@ import GHC.Conc.Sync
 
 import GHC.Stack.CloneStack (cloneThreadStack)
 
-import qualified Gap
-import ThreadSample
-import Util
+import qualified Debug.Trace.Binary.Compat as Compat
+import GHC.Stack.Profiler.ThreadSample
+import GHC.Stack.Profiler.Util
 
 data SamplerProfilerConfig = MkSamplerProfilerConfig
   { samplerThreadId :: ThreadId
@@ -66,7 +65,7 @@ withSampleProfilerForThread tid delay act =
 
 runWithSampleProfiler :: (SamplerProfilerConfig -> IO ()) -> Int -> IO a -> IO a
 runWithSampleProfiler sampleAction delay act = do
-  if Gap.userTracingEnabled
+  if Compat.userTracingEnabled
     then bracket (setupSampleProfiler sampleAction delay) tearDownSamplers (const act)
     else act
 
@@ -103,7 +102,7 @@ isRtsThread _tid (Just lbl) =
 sampleThread :: ThreadId -> IO (Maybe ThreadSample)
 sampleThread tid = do
   tidStatus <- threadStatus tid
-  (cap, _blocked) <- threadCapability tid
+  (cap, _lockedToCap) <- threadCapability tid
   case tidStatus of
     ThreadRunning -> do
       stack <- cloneThreadStack tid
@@ -122,4 +121,4 @@ sampleToEventlog tid = do
     Nothing -> pure ()
     Just threadSample -> do
       msg <- serializeThreadSample threadSample
-      Gap.traceBinaryEventIO $ LBS.toStrict msg
+      Compat.traceBinaryEventIO $ LBS.toStrict msg

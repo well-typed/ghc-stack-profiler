@@ -1,9 +1,9 @@
 cabal-version: 3.8
-name: sampler-speedscope
+name: ghc-stack-profiler-speedscope
 version: 0.1.0.0
-license: NONE
-author: fendor
-maintainer: fendor@posteo.de
+license: BSD-3-Clause
+author: Hannes Siebenhandl, Wen Kokke, Matthew Pickering
+maintainer: hannes@well-typed.com
 build-type: Simple
 extra-doc-files: CHANGELOG.md
 
@@ -12,12 +12,21 @@ common warnings
     -Wall
     -Wunused-packages
 
+common exts
+  default-extensions:
+    DuplicateRecordFields
+    NamedFieldPuns
+    ViewPatterns
+    LambdaCase
+    DerivingStrategies
+    DeriveGeneric
+
 library
   import:
-    warnings
+    warnings, exts
 
   exposed-modules:
-    Speedscope
+    GHC.Stack.Profiler.Speedscope
 
   build-depends:
     aeson,
@@ -26,7 +35,7 @@ library
     containers,
     extra,
     ghc-events,
-    ghc-sampler-eventlog,
+    ghc-stack-profiler,
     hs-speedscope,
     machines,
     optparse-applicative,
@@ -37,9 +46,9 @@ library
 
   default-language: GHC2021
 
-executable ghc-sample-speedscope
+executable ghc-stack-profiler-speedscope
   import:
-    warnings
+    warnings, exts
 
   hs-source-dirs:
     app
@@ -49,6 +58,6 @@ executable ghc-sample-speedscope
 
   build-depends:
     base,
-    sampler-speedscope,
+    ghc-stack-profiler-speedscope,
 
   default-language: GHC2021

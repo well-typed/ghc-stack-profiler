@@ -1,4 +1,4 @@
-# Revision history for ghc-sampler-eventlog
+# Revision history for ghc-stack-profiler
 
 ## 0.1.0.0 -- YYYY-mm-dd
 

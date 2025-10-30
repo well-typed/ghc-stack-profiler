@@ -1,9 +1,7 @@
-{-# LANGUAGE NamedFieldPuns    #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE LambdaCase        #-}
 {-# LANGUAGE MagicHash         #-}
 
-module ThreadSample where
+module GHC.Stack.Profiler.ThreadSample where
 
 import Control.Concurrent
 import Control.Monad (replicateM)
@@ -26,7 +24,7 @@ import GHC.Internal.Heap.Closures
 import qualified GHC.Internal.Stack.Decode as Decode
 import GHC.Internal.Stack.Types
 
-import Util
+import GHC.Stack.Profiler.Util
 
 newtype CapabilityId =
   CapabilityId
@@ -49,19 +47,23 @@ serializeThreadSample sample = do
 deserializeCallStackMessage :: LBS.ByteString -> Either String CallStackMessage
 deserializeCallStackMessage = Right . runGet get
 
+-- |
+--
 -- Message format:
 --
--- MESSAGE
---  := "CA" "11" <STACK>
--- STACK
---  := <capability: Word32> <threadId: Word32> <length: Word8> <ENTRY>+
--- ENTRY
---  := "01" <ipe: Word64>
---   | "02" <string: STRING>
---   | "03" <row: Word32> <col: Word32> <function: CStringLen> <filename: CStringLen>
--- CStringLen
---   := <length: Word8> <Char>+
-
+-- @
+--  MESSAGE
+--     := "CA" "11" <STACK>
+--  STACK
+--     := <capability: Word32> <threadId: Word32> <length: Word8> <ENTRY>+
+--  ENTRY
+--     := "01" <ipe: Word64>
+--      | "02" <string: STRING>
+--      | "03" <row: Word32> <col: Word32> <function: CStringLen> <filename: CStringLen>
+--  CStringLen
+--      := <length: Word8> <Char>+
+-- @
+--
 data CallStackMessage =
   MkCallStackMessage
     { callThreadId :: Word64

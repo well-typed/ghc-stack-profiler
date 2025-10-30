@@ -1,9 +1,7 @@
-{-# LANGUAGE LambdaCase        #-}
-
 module Main where
 
 import Control.Exception.Backtrace
-import Speedscope
+import GHC.Stack.Profiler.Speedscope
 
 main :: IO ()
 main = do

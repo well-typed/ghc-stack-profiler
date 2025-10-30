@@ -1,7 +1,7 @@
-{-# LANGUAGE CPP #-}
-{-# LANGUAGE MagicHash #-}
+{-# LANGUAGE CPP           #-}
+{-# LANGUAGE MagicHash     #-}
 {-# LANGUAGE UnboxedTuples #-}
-module Gap (
+module Debug.Trace.Binary.Compat (
   -- * For tracing user binary events
   traceBinaryEventIO,
   -- * Flag to check whether the eventlog is enabled

@@ -1,14 +1,25 @@
 cabal-version: 3.8
-name: ghc-sampler-eventlog
+name: ghc-stack-profiler
 version: 0.1.0.0
-license: NONE
-author: fendor
-maintainer: fendor@posteo.de
+license: BSD-3-Clause
+author: Hannes Siebenhandl, Wen Kokke, Matthew Pickering
+maintainer: hannes@well-typed.com
 build-type: Simple
 extra-doc-files: CHANGELOG.md
 
 common warnings
-  ghc-options: -Wall
+  ghc-options:
+    -Wall
+    -Wunused-packages
+
+common exts
+  default-extensions:
+    DuplicateRecordFields
+    NamedFieldPuns
+    ViewPatterns
+    LambdaCase
+    DerivingStrategies
+    DeriveGeneric
 
 flag use-ghc-trace-events
   description: Use the package 'ghc-trace-events'
@@ -17,13 +28,14 @@ flag use-ghc-trace-events
 
 library
   import:
-    warnings
+    warnings, exts
 
   exposed-modules:
-    Gap
-    Sampler
-    ThreadSample
-    Util
+    Debug.Trace.Binary.Compat
+
+    GHC.Stack.Profiler.Sampler
+    GHC.Stack.Profiler.ThreadSample
+    GHC.Stack.Profiler.Util
 
   build-depends:
     base,
@@ -31,7 +43,7 @@ library
     bytestring,
     ghc-experimental,
     ghc-internal,
-    ghc-prim,
+
     text,
 
   if flag(use-ghc-trace-events)
@@ -39,6 +51,9 @@ library
         -DUSE_GHC_TRACE_EVENTS
     build-depends:
         ghc-trace-events,
+  else
+    build-depends:
+        ghc-prim,
 
   hs-source-dirs:
     src

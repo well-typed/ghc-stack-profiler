@@ -1,4 +1,4 @@
-module Util where
+module GHC.Stack.Profiler.Util where
 
 import Control.Monad (replicateM)
 import Data.Binary

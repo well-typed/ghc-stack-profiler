@@ -1,3 +1,6 @@
-packages: sampler/
+packages: profiler/
           speedscope/
           examples/simple/
+
+package *
+    ghc-options: -finfo-table-map -fdistinct-constructor-tables
