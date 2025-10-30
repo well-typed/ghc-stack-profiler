@@ -373,8 +373,8 @@ data EventLogProfile = EventLogProfile
     { prog_name :: Maybe Text
     , rts_version :: Maybe (Version, Text)
     , prof_interval :: Maybe Word64
-    , info_provs :: IntMap InfoProv
-    , user_cost_centres :: Map UserCostCentre (CostCentreId, UserCostCentre)
+    , info_provs :: !(IntMap InfoProv)
+    , user_cost_centres :: !(Map UserCostCentre (CostCentreId, UserCostCentre))
     , cost_centre_counter :: !CostCentreId
     , el_samples :: [Sample]
     }  deriving (Eq, Ord, Show)
@@ -393,17 +393,17 @@ data UserCostCentre
   deriving (Eq, Ord, Show)
 
 data InfoProv = InfoProv
-  { infoProvId :: InfoProvId
-  , infoProvSrcLoc :: Text
-  , infoProvModule :: Text
-  , infoProvLabel :: Text
-  , infoTableName :: Text
-  , infoClosureDesc :: Int
-  , infoTyDesc :: Text
+  { infoProvId :: !InfoProvId
+  , infoProvSrcLoc :: !Text
+  , infoProvModule :: !Text
+  , infoProvLabel :: !Text
+  , infoTableName :: !Text
+  , infoClosureDesc :: !Int
+  , infoTyDesc :: !Text
   }  deriving (Eq, Ord, Show)
 
 data Sample = Sample
-  { sampleThreadId :: Word64 -- ^ thread id
+  { sampleThreadId :: !Word64 -- ^ thread id
   , sampleCostCentreStack :: [CostCentreId] -- ^ stack ids
   }
   deriving (Eq, Ord, Show)
