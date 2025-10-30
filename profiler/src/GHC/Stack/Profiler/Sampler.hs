@@ -29,6 +29,7 @@ import GHC.Conc.Sync
 import GHC.Stack.CloneStack (cloneThreadStack)
 
 import qualified Debug.Trace.Binary.Compat as Compat
+import GHC.Stack.Profiler.Decode
 import GHC.Stack.Profiler.ThreadSample
 import GHC.Stack.Profiler.Util
 

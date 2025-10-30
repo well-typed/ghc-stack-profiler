@@ -1,5 +1,5 @@
 cabal-version: 3.8
-name: ghc-stack-profiler
+name: ghc-stack-profiler-core
 version: 0.1.0.0
 license: BSD-3-Clause
 author: Hannes Siebenhandl, Wen Kokke, Matthew Pickering
@@ -21,39 +21,22 @@ common exts
     DerivingStrategies
     DeriveGeneric
 
-flag use-ghc-trace-events
-  description: Use the package 'ghc-trace-events'
-  manual: True
-  default: True
-
 library
   import:
     warnings, exts
 
   exposed-modules:
-    Debug.Trace.Binary.Compat
-    GHC.Stack.Profiler.Sampler
-    GHC.Stack.Profiler.Decode
+    GHC.Stack.Profiler.ThreadSample
+    GHC.Stack.Profiler.Util
 
   build-depends:
     base,
     binary,
     bytestring,
-    ghc-experimental,
-    ghc-internal,
-    ghc-stack-profiler-core,
     text,
-
-  if flag(use-ghc-trace-events)
-    cpp-options:
-        -DUSE_GHC_TRACE_EVENTS
-    build-depends:
-        ghc-trace-events,
-  else
-    build-depends:
-        ghc-prim,
 
   hs-source-dirs:
     src
 
   default-language: GHC2021
+

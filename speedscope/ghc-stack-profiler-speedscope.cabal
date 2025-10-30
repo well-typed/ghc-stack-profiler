@@ -21,6 +21,9 @@ common exts
     DerivingStrategies
     DeriveGeneric
 
+common runopts
+  ghc-options: -threaded -rtsopts
+
 library
   import:
     warnings, exts
@@ -35,7 +38,7 @@ library
     containers,
     extra,
     ghc-events,
-    ghc-stack-profiler,
+    ghc-stack-profiler-core,
     hs-speedscope,
     machines,
     optparse-applicative,
@@ -48,7 +51,7 @@ library
 
 executable ghc-stack-profiler-speedscope
   import:
-    warnings, exts
+    warnings, exts, runopts
 
   hs-source-dirs:
     app
