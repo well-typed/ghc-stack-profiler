@@ -19,7 +19,7 @@ import qualified Data.List.NonEmpty as NonEmpty
 import Unsafe.Coerce
 
 import GHC.Stack.Annotation.Experimental
-import GHC.Stack.CloneStack (StackSnapshot(..), cloneThreadStack)
+import GHC.Stack.CloneStack (StackSnapshot(..))
 import GHC.Internal.Conc.Sync
 import GHC.Internal.InfoProv.Types (lookupIpProvId)
 import GHC.Internal.Heap.Closures
@@ -40,19 +40,6 @@ data ThreadSample =
     , threadSampleCapability :: CapabilityId
     , threadSampleStackSnapshot :: StackSnapshot
     }
-
-sampleThread :: ThreadId -> IO (Maybe ThreadSample)
-sampleThread tid = do
-  (cap, blocked) <- threadCapability tid
-  if blocked
-    then pure Nothing
-    else do
-      stack <- cloneThreadStack tid
-      pure $ Just $ ThreadSample
-        { threadSampleId = tid
-        , threadSampleCapability = CapabilityId $ intToWord64 cap
-        , threadSampleStackSnapshot = stack
-        }
 
 serializeThreadSample :: ThreadSample -> IO LBS.ByteString
 serializeThreadSample sample = do

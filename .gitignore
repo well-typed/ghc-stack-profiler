@@ -2,4 +2,6 @@ dist-newstyle/
 cabal.project.local
 *.eventlog
 *.eventlog.json
+*.eventlog.html
 *.hp
+

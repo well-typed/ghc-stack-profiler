@@ -6,6 +6,8 @@ module Sampler (
   withSampleProfilerForThread,
   -- * Configuration of sample profiler
   SamplerProfilerConfig(..),
+  -- * Basic thread sampler
+  sampleThread,
   -- * Low level helpers for setting up custom
   -- sample profilers threads
   runWithSampleProfiler,
@@ -25,8 +27,11 @@ import qualified Data.List as List
 import GHC.Conc
 import GHC.Conc.Sync
 
+import GHC.Stack.CloneStack (cloneThreadStack)
+
 import qualified Gap
 import ThreadSample
+import Util
 
 data SamplerProfilerConfig = MkSamplerProfilerConfig
   { samplerThreadId :: ThreadId
@@ -94,6 +99,22 @@ isRtsThread :: ThreadId -> Maybe String -> Bool
 isRtsThread _    Nothing    = False
 isRtsThread _tid (Just lbl) =
   lbl `elem` ["TimerManager"] || "IOManager on cap" `List.isPrefixOf` lbl
+
+sampleThread :: ThreadId -> IO (Maybe ThreadSample)
+sampleThread tid = do
+  tidStatus <- threadStatus tid
+  (cap, _blocked) <- threadCapability tid
+  case tidStatus of
+    ThreadRunning -> do
+      stack <- cloneThreadStack tid
+      pure $ Just $ ThreadSample
+        { threadSampleId = tid
+        , threadSampleCapability = CapabilityId $ intToWord64 cap
+        , threadSampleStackSnapshot = stack
+        }
+    _ -> do
+      -- Only running threads need to be sampled
+      pure Nothing
 
 sampleToEventlog :: ThreadId -> IO ()
 sampleToEventlog tid = do
