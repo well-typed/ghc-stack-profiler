@@ -1,7 +1,7 @@
 packages:
-    core/
-    profiler/
-    speedscope/
+    ghc-stack-profiler-core/
+    ghc-stack-profiler-profiler/
+    ghc-stack-profiler-speedscope/
     examples/simple/
 
 package *
