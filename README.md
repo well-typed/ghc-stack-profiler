@@ -9,11 +9,11 @@ The profiling samples can be exported to [`speedscope.app`](https://www.speedsco
 
 ![GHC stack trace obtained with `ghc-stack-profiler` and viewed in speedscope.app](images/ghc-stack-profile-left-heavy.png)
 
-> 🚧 **Under construction** 🚧
+> 🚧 **Under Construction** 🚧
 >
 > This project is currently being developed. The API may change at any moment and is unstable.
 >
-> **This project can only be used with the [WIP GHC branch `wip/fendor/ghc-stack-profiler`](https://gitlab.haskell.org/ghc/ghc/-/tree/wip/fendor/ghc-stack-profiler).**
+> **This project requires the [WIP GHC branch `wip/fendor/ghc-stack-profiler`](https://gitlab.haskell.org/ghc/ghc/-/tree/wip/fendor/ghc-stack-profiler).**
 
 ## Usage
 
@@ -29,8 +29,8 @@ main = withSampleProfilerForMyThread (SampleIntervalMs 10) $ do
 
 This will spawn a profiling thread that will periodically take a snapshot of the current RTS callstack of your program and serialises it to the eventlog.
 
-The stack traces will be easier to read if the program has been compiled with `-finfo-table-map` and `-fdistinct-constructor-tables`.
-Using `cabal`, this can be achieved with a fitting `cabal.project` file:
+To improve readability of the profile, compile the program with `-finfo-table-map` and `-fdistinct-constructor-tables`.
+Using `cabal`, this can be achieved with an appropriate `cabal.project` file:
 
 ```cabal
 packages: ...
@@ -47,7 +47,7 @@ To emit the eventlog messages by the profiler, you need to run your program with
 ./<program> ... +RTS -l -RTS
 ```
 
-This will write out an eventlog to `<program>.eventlog` which can be transformed for [`speedscope.app`](https://www.speedscope.app/) via the script `ghc-stack-profiler-speedscope`:
+This will write out an eventlog to `<program>.eventlog` which can be transformed for [`speedscope.app`](https://www.speedscope.app/) via the script `ghc-stack-profiler-speedscope`.
 
 ```bash
 ghc-stack-profiler-speedscope <program>.eventlog
@@ -55,7 +55,7 @@ ghc-stack-profiler-speedscope <program>.eventlog
 
 The resulting profile `<program>.eventlog.json` can be viewed and further analysed in [`speedscope.app`](https://www.speedscope.app/).
 
-Note, the results are affected by optimisation compilation options, such as `-fno-omit-yields`.
+Note that the results are affected by compilation optimisation options, such as `-fno-omit-yields`.
 
 ### Example `simple`
 
@@ -63,7 +63,7 @@ The `simple` project is a typical fibonacci implementation. Run it via cabal, as
 
 ```bash
 cabal run exe:simple -- +RTS -l
-ghc-stack-profiler-speedscope simple.eventlog
+cabal run exe:ghc-stack-profiler-speedscope -- simple.eventlog
 ```
 
 Uploading the resulting `simple.eventlog.json` to [`speedscope.app`](https://www.speedscope.app/) shows something similar to:
@@ -78,4 +78,4 @@ We observe an overhead of around 5% - 10% for compiling `Cabal-syntax`.
 The sampling interval was 10 milliseconds.
 The overhead depends on the callstack depth, number of alive threads and sampling interval.
 
-More sophistacted benchmarks are expected soon.
+More sophisticated benchmarks are expected soon.
