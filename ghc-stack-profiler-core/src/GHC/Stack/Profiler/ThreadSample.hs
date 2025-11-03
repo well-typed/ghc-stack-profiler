@@ -14,6 +14,7 @@ import qualified Data.Text as Text
 import GHC.Stack.CloneStack (StackSnapshot)
 
 import GHC.Stack.Profiler.Util
+import Control.Exception (assert)
 
 newtype CapabilityId =
   CapabilityId
@@ -71,10 +72,12 @@ data SourceLocation =
     }
   deriving (Eq, Ord, Show)
 
+callStackMessageTag :: Word16
+callStackMessageTag = 0xCA11
+
 instance Binary CallStackMessage where
   put msg = do
-    putByteString "CA"
-    putByteString "11"
+    putWord16 callStackMessageTag
     putWord32 $ word64ToWord32 $ getCapabilityId $ callCapabilityId msg
     putWord32 $ word64ToWord32 $ callThreadId msg
     -- limit number of items to serialise to 'cutOffLength'
@@ -83,17 +86,19 @@ instance Binary CallStackMessage where
     mapM_ put items
 
   get = do
-    _ <- getByteString 2 -- CA
-    _ <- getByteString 2 -- 11
-    capId <- getWord32
-    tid <- getWord32
-    len <- getWord8
-    items <- replicateM (word8ToInt len) get
-    pure MkCallStackMessage
-      { callThreadId = word32ToWord64 tid
-      , callCapabilityId = CapabilityId $ word32ToWord64 capId
-      , callStack = items
-      }
+    tag <- getWord16
+    if tag /= callStackMessageTag
+      then fail $ "Binary.CallStackMessage: unexpected tag, expected " ++ show callStackMessageTag ++ " but got: " ++ show tag
+      else do
+        capId <- getWord32
+        tid <- getWord32
+        len <- getWord8
+        items <- replicateM (word8ToInt len) get
+        pure MkCallStackMessage
+          { callThreadId = word32ToWord64 tid
+          , callCapabilityId = CapabilityId $ word32ToWord64 capId
+          , callStack = items
+          }
 
 instance Binary SourceLocation where
   put loc = do
