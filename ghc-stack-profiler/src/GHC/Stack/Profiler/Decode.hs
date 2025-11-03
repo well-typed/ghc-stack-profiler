@@ -43,8 +43,10 @@ decodeStackWithIpProvId snapshot = do
 unpackStackFrameWithIpProvId :: Decode.StackFrameLocation -> IO (StackFrame, Maybe Word64)
 unpackStackFrameWithIpProvId stackFrameLoc = do
   Decode.unpackStackFrameTo stackFrameLoc
-    (\ info infoKey nextChunk@(StackSnapshot stack#) -> do
-      framesWithIpe <- decodeStackWithIpProvId nextChunk
+    (\ info infoKey _nextChunk@(StackSnapshot stack#) -> do
+      -- TODO: We don't want to decode the stack frames at all,
+      -- we only need to decode the 'AnnFrame' stack frame.
+      -- framesWithIpe <- decodeStackWithIpProvId nextChunk
       mIpeId <- lookupIpProvId infoKey
       pure
         ( UnderflowFrame
@@ -53,7 +55,7 @@ unpackStackFrameWithIpProvId stackFrameLoc = do
               GenStgStackClosure
                 { ssc_info = info,
                   ssc_stack_size = Decode.getStackFields stack#,
-                  ssc_stack = map fst framesWithIpe
+                  ssc_stack = [] -- map fst framesWithIpe
                 }
           }
         , mIpeId
