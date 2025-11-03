@@ -63,7 +63,9 @@ entry = do
 run :: SSOptions -> IO ()
 run SSOptions{ file, isolateStart, isolateEnd } = do
   el <- either error id <$> readEventLogFromFile file
-  encodeFile (file ++ ".json") (convertToSpeedscope (isolateStart, isolateEnd) isInfoEvent processEventsDefault el)
+  elIpe <- either error id <$> readEventLogFromFile file
+  let infoProv = parseIpeTraces  (isolateStart, isolateEnd) elIpe
+  encodeFile (file ++ ".json") (convertToSpeedscope (isolateStart, isolateEnd) isInfoEvent processEventsDefault infoProv el)
 
 -- | A Moore machine whose state indicates which delimiting markers have been
 -- seen. If both markers are 'Nothing', then the state will always be 'True'.
@@ -138,6 +140,28 @@ delimit p =
             when (s || p ei) $ yield e
             go mm
 
+parseIpeTraces
+  :: (Maybe Text, Maybe Text)
+  -> EventLog
+  -> IntMap InfoProv
+parseIpeTraces (is, ie) (EventLog _h (Data es)) =
+  infoProvs
+  where
+    Identity (EventLogProfile _ _ _ infoProvs _userCostCentres _counter _samples) =
+        foldlT processIpeEventsDefault initEL $
+            source es ~>
+            delimit isIpeInfoEvent (markers (is, ie))
+
+    initEL = EventLogProfile
+      { prog_name = Nothing
+      , rts_version = Nothing
+      , prof_interval = Nothing
+      , info_provs = IntMap.empty
+      , user_cost_centres = Map.empty
+      , cost_centre_counter = 0
+      , el_samples = []
+      }
+
 -- | Convert an 'EventLog' into a speedscope profile JSON value. To convert the
 -- event log using the traditional profile extraction logic, use `isInfoEvent`
 -- and `processEventsDefault` for the predicate and processing function,
@@ -152,9 +176,10 @@ convertToSpeedscope
   -> (EventLogProfile -> Event -> EventLogProfile)
   -- ^ Specifies how to build the profile given the events included based on the
   -- delimiters and predicate
+  -> IntMap InfoProv
   -> EventLog
   -> Value
-convertToSpeedscope (is, ie) considerEvent processEvents (EventLog _h (Data (sortOn evTime -> es))) =
+convertToSpeedscope (is, ie) considerEvent processEvents infoProvs (EventLog _h (Data es)) =
   case el_version of
     Just (ghc_version, _) | ghc_version < makeVersion [8,9,0]  ->
       error ("Eventlog is from ghc-" ++ showVersion ghc_version ++ " hs-speedscope only works with GHC 8.10 or later")
@@ -177,7 +202,7 @@ convertToSpeedscope (is, ie) considerEvent processEvents (EventLog _h (Data (sor
       { prog_name = Nothing
       , rts_version = Nothing
       , prof_interval = Nothing
-      , info_provs = IntMap.empty
+      , info_provs = infoProvs
       , user_cost_centres = Map.empty
       , cost_centre_counter = 0
       , el_samples = []
@@ -259,17 +284,9 @@ tryParsingGhcSrcSpan srcSpan =
       Left _ -> Nothing
       Right (number, _) -> Just number
 
--- | Default processing function to convert profiling events into a classic speedscope
--- profile
-processEventsDefault :: EventLogProfile -> Event -> EventLogProfile
-processEventsDefault elProf (Event _t ei _c) =
+processIpeEventsDefault :: EventLogProfile -> Event -> EventLogProfile
+processIpeEventsDefault elProf (Event _t ei _c) =
   case ei of
-    ProgramArgs _ (pname: _args) ->
-      elProf { prog_name = Just pname }
-    RtsIdentifier _ rts_ident ->
-      elProf { rts_version = parseIdent rts_ident }
-    ProfBegin ival ->
-      elProf { prof_interval = Just ival }
     InfoTableProv { itTableName, itClosureDesc, itTyDesc, itInfo, itLabel, itSrcLoc, itModule } ->
       let
         key = InfoProvId itInfo
@@ -286,6 +303,20 @@ processEventsDefault elProf (Event _t ei _c) =
         elProf
           { info_provs = IntMap.insert (word64ToInt $ coerce key) prov (info_provs elProf)
           }
+    _ ->
+      elProf
+
+-- | Default processing function to convert profiling events into a classic speedscope
+-- profile
+processEventsDefault :: EventLogProfile -> Event -> EventLogProfile
+processEventsDefault elProf (Event _t ei _c) =
+  case ei of
+    ProgramArgs _ (pname: _args) ->
+      elProf { prog_name = Just pname }
+    RtsIdentifier _ rts_ident ->
+      elProf { rts_version = parseIdent rts_ident }
+    ProfBegin ival ->
+      elProf { prof_interval = Just ival }
     UserBinaryMessage bs ->
       case deserializeCallStackMessage $ LBS.fromStrict bs of
         Left _err ->
@@ -334,11 +365,14 @@ lookupOrAddStackItemToProfile elProf = \ case
               }
             )
 
+isIpeInfoEvent :: EventInfo -> Bool
+isIpeInfoEvent InfoTableProv {}      = True
+isIpeInfoEvent _ = False
+
 isInfoEvent :: EventInfo -> Bool
 isInfoEvent ProgramArgs {}        = True
 isInfoEvent RtsIdentifier {}      = True
 isInfoEvent ProfBegin {}          = True
-isInfoEvent InfoTableProv {}      = True
 isInfoEvent UserBinaryMessage {}  = True
 isInfoEvent _ = False
 

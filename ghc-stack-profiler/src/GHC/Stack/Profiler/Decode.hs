@@ -26,6 +26,16 @@ serializeThreadSample sample = do
   callStackMessage <- threadSampleToCallStackMessage sample
   pure $ runPut $ put callStackMessage
 
+threadSampleToCallStackMessage :: ThreadSample -> IO CallStackMessage
+threadSampleToCallStackMessage sample = do
+  frames <- decodeStackWithIpProvId $ threadSampleStackSnapshot sample
+  let stackMessages = fmap NonEmpty.head . NonEmpty.group $ mapMaybe (uncurry stackFrameToStackItem) frames
+  pure MkCallStackMessage
+    { callThreadId = fromThreadId $ threadSampleId sample
+    , callCapabilityId = threadSampleCapability sample
+    , callStack = stackMessages
+    }
+
 decodeStackWithIpProvId :: StackSnapshot -> IO [(StackFrame, Maybe Word64)]
 decodeStackWithIpProvId snapshot = do
   snd <$> Decode.decodeStackWithFrameUnpack unpackStackFrameWithIpProvId snapshot
@@ -53,16 +63,6 @@ unpackStackFrameWithIpProvId stackFrameLoc = do
     (\ frame infoKey -> do
       mIpeId <- lookupIpProvId infoKey
       pure (frame, mIpeId))
-
-threadSampleToCallStackMessage :: ThreadSample -> IO CallStackMessage
-threadSampleToCallStackMessage sample = do
-  frames <- decodeStackWithIpProvId $ threadSampleStackSnapshot sample
-  let stackMessages = fmap NonEmpty.head . NonEmpty.group $ mapMaybe (uncurry stackFrameToStackItem) frames
-  pure MkCallStackMessage
-    { callThreadId = fromThreadId $ threadSampleId sample
-    , callCapabilityId = threadSampleCapability sample
-    , callStack = stackMessages
-    }
 
 stackFrameToStackItem :: StackFrame -> Maybe Word64 -> Maybe StackItem
 stackFrameToStackItem frame mIpe =
