@@ -29,6 +29,18 @@ main = withSampleProfilerForMyThread (SampleIntervalMs 10) $ do
 
 This will spawn a profiling thread that will periodically take a snapshot of the current RTS callstack of your program and serialises it to the eventlog.
 
+The stack traces will be easier to read if the program has been compiled with `-finfo-table-map` and `-fdistinct-constructor-tables`.
+Using `cabal`, this can be achieved with a fitting `cabal.project` file:
+
+```cabal
+packages: ...
+
+...
+
+package *
+    ghc-options: -finfo-table-map -fdistinct-constructor-tables
+```
+
 To emit the eventlog messages by the profiler, you need to run your program with the `-l` RTS flag, for example via:
 
 ```bash
