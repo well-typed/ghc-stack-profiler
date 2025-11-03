@@ -6,7 +6,6 @@ import Control.Concurrent
 import Control.Monad (replicateM)
 import Data.Binary
 import Data.Binary.Get
-import Data.Binary.Put
 import qualified Data.ByteString.Lazy as LBS
 import Data.Text (Text)
 import qualified Data.Text as Text
@@ -14,7 +13,6 @@ import qualified Data.Text as Text
 import GHC.Stack.CloneStack (StackSnapshot)
 
 import GHC.Stack.Profiler.Util
-import Control.Exception (assert)
 
 newtype CapabilityId =
   CapabilityId
@@ -30,7 +28,9 @@ data ThreadSample =
     }
 
 deserializeCallStackMessage :: LBS.ByteString -> Either String CallStackMessage
-deserializeCallStackMessage = Right . runGet get
+deserializeCallStackMessage msg = case runGetOrFail get msg of
+  Left (_, _, errMsg) -> Left errMsg
+  Right (_, _, callStackMessage) -> Right callStackMessage
 
 -- | A fully decoded rts callstack that can be serialised to the EventLog.
 --
