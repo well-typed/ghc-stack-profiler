@@ -31,7 +31,7 @@ data ThreadSample =
 deserializeCallStackMessage :: LBS.ByteString -> Either String CallStackMessage
 deserializeCallStackMessage = Right . runGet get
 
--- |
+-- | A fully decoded rts callstack that can be serialised to the EventLog.
 --
 -- Message format:
 --

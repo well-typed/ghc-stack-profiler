@@ -62,9 +62,14 @@ entry = do
 
 run :: SSOptions -> IO ()
 run SSOptions{ file, isolateStart, isolateEnd } = do
-  el <- either error id <$> readEventLogFromFile file
+  -- We extract the 'InfoProv's before collecting the thread samples to avoid
+  -- having to sort the 'InfoProv's and causing a memory leak.
+  -- We reduce the memory usage considerably by doing this separately.
   elIpe <- either error id <$> readEventLogFromFile file
   let infoProv = parseIpeTraces  (isolateStart, isolateEnd) elIpe
+
+  -- Now do the actual work
+  el <- either error id <$> readEventLogFromFile file
   encodeFile (file ++ ".json") (convertToSpeedscope (isolateStart, isolateEnd) isInfoEvent processEventsDefault infoProv el)
 
 -- | A Moore machine whose state indicates which delimiting markers have been
@@ -177,6 +182,7 @@ convertToSpeedscope
   -- ^ Specifies how to build the profile given the events included based on the
   -- delimiters and predicate
   -> IntMap InfoProv
+  -- ^ Already gathered table for 'InfoProv's that have been collected prior.
   -> EventLog
   -> Value
 convertToSpeedscope (is, ie) considerEvent processEvents infoProvs (EventLog _h (Data es)) =
@@ -408,9 +414,13 @@ data EventLogProfile = EventLogProfile
     , rts_version :: Maybe (Version, Text)
     , prof_interval :: Maybe Word64
     , info_provs :: !(IntMap InfoProv)
+    -- ^ Table of present 'InfoProv's in the eventlog
     , user_cost_centres :: !(Map UserCostCentre (CostCentreId, UserCostCentre))
+    -- ^ All "cost centres" that are actually mentioned by `ghc-stack-profiler`.
     , cost_centre_counter :: !CostCentreId
+    -- ^ Unique Counter for the 'Sample's
     , el_samples :: [Sample]
+    -- ^ All samples in the reverse order of finding them in the eventlog.
     }  deriving (Eq, Ord, Show)
 
 newtype CostCentreId = CostCentreId Word64

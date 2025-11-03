@@ -1,17 +1,18 @@
 module GHC.Stack.Profiler.Sampler (
   -- * Run sample profiler
-  withSampleProfiler,
+  withStackProfiler,
   withSampleProfilerForMyThread,
-  withSampleProfilerForThread,
+  withStackProfilerForThread,
   -- * Configuration of sample profiler
-  SamplerProfilerConfig(..),
+  StackProfilerManager(..),
+  ProfilerSamplingInterval(..),
   -- * Basic thread sampler
   sampleThread,
   -- * Low level helpers for setting up custom
   -- sample profilers threads
-  runWithSampleProfiler,
-  setupSampleProfiler,
-  tearDownSamplers,
+  runWithStackProfiler,
+  setupStackProfilerManager,
+  stopStackProfilerManager,
   sampleToEventlog,
   -- * Thread filtering
   isProfilerThread,
@@ -33,13 +34,38 @@ import GHC.Stack.Profiler.Decode
 import GHC.Stack.Profiler.ThreadSample
 import GHC.Stack.Profiler.Util
 
-data SamplerProfilerConfig = MkSamplerProfilerConfig
+-- | A 'StackProfilerManager' records all the relevant information
+-- to manage the ghc stack profiler run-time.
+data StackProfilerManager = MkStackProfilerManager
   { samplerThreadId :: ThreadId
+  -- ^ 'ThreadId' of the stack sampling thread.
   } deriving (Show, Eq, Ord)
 
-withSampleProfiler :: Int -> IO a -> IO a
-withSampleProfiler delay act = do
-  runWithSampleProfiler sampleAction delay act
+-- | Sampling intervals for the stack profiler.
+data ProfilerSamplingInterval
+  = SampleIntervalMs Int
+  -- ^ Sample every @n@ milliseconds.
+  --
+  -- Recommended value: @'SampleIntervalMs' 10@ or @'SampleIntervalMs' 20@.
+  deriving (Show, Eq, Ord)
+
+profilerSamplingIntervalToThreadDelayTime :: ProfilerSamplingInterval -> Int
+profilerSamplingIntervalToThreadDelayTime = \ case
+  SampleIntervalMs n -> n * 1000
+
+-- ----------------------------------------------------------------------------
+-- High-Level user API
+-- ----------------------------------------------------------------------------
+
+-- | Sample the all non-rts threads every 'ProfilerSamplingInterval' for the duration of
+-- the wrapped action.
+-- Once the wrapped action terminates, the stack profiling stops.
+--
+-- RTS threads such as the 'TimerManager' and 'IOManager' are not sampled as these
+-- are usually not interesting for user code.
+withStackProfiler :: ProfilerSamplingInterval -> IO a -> IO a
+withStackProfiler delay act = do
+  runWithStackProfiler sampleAction delay act
   where
     sampleAction config = do
       tids <- listThreads
@@ -47,7 +73,7 @@ withSampleProfiler delay act = do
       forM_ userThreads $ \tid ->
         sampleToEventlog tid
 
-    isThreadOfInterest :: SamplerProfilerConfig -> ThreadId -> IO Bool
+    isThreadOfInterest :: StackProfilerManager -> ThreadId -> IO Bool
     isThreadOfInterest config tid = do
       lbl <- threadLabel tid
       pure $ not $ or
@@ -55,27 +81,37 @@ withSampleProfiler delay act = do
         , isRtsThread tid lbl
         ]
 
-withSampleProfilerForMyThread :: Int -> IO a -> IO a
+-- | Sample the current thread every 'ProfilerSamplingInterval' for the duration of
+-- the wrapped action.
+-- Once the wrapped action terminates, the stack profiling stops.
+withSampleProfilerForMyThread :: ProfilerSamplingInterval -> IO a -> IO a
 withSampleProfilerForMyThread delay act = do
   tid <- myThreadId
-  withSampleProfilerForThread tid delay act
+  withStackProfilerForThread tid delay act
 
-withSampleProfilerForThread :: ThreadId -> Int -> IO a -> IO a
-withSampleProfilerForThread tid delay act =
-  runWithSampleProfiler (const (sampleToEventlog tid)) delay act
+-- | Sample a specific 'ThreadId' every 'ProfilerSamplingInterval' for the duration of
+-- the wrapped action.
+-- Once the wrapped action terminates, the stack profiling stops.
+withStackProfilerForThread :: ThreadId -> ProfilerSamplingInterval -> IO a -> IO a
+withStackProfilerForThread tid delay act =
+  runWithStackProfiler (const (sampleToEventlog tid)) delay act
 
-runWithSampleProfiler :: (SamplerProfilerConfig -> IO ()) -> Int -> IO a -> IO a
-runWithSampleProfiler sampleAction delay act = do
+-- ----------------------------------------------------------------------------
+-- Low-level user API
+-- ----------------------------------------------------------------------------
+
+runWithStackProfiler :: (StackProfilerManager -> IO ()) -> ProfilerSamplingInterval -> IO a -> IO a
+runWithStackProfiler sampleAction delay act = do
   if Compat.userTracingEnabled
-    then bracket (setupSampleProfiler sampleAction delay) tearDownSamplers (const act)
+    then bracket (setupStackProfilerManager sampleAction delay) stopStackProfilerManager (const act)
     else act
 
-tearDownSamplers :: SamplerProfilerConfig -> IO ()
-tearDownSamplers MkSamplerProfilerConfig{samplerThreadId} =
+stopStackProfilerManager :: StackProfilerManager -> IO ()
+stopStackProfilerManager MkStackProfilerManager{samplerThreadId} =
   killThread samplerThreadId
 
-setupSampleProfiler :: (SamplerProfilerConfig -> IO ()) -> Int -> IO SamplerProfilerConfig
-setupSampleProfiler sampleAction delay = do
+setupStackProfilerManager :: (StackProfilerManager -> IO ()) -> ProfilerSamplingInterval -> IO StackProfilerManager
+setupStackProfilerManager sampleAction delay = do
   samplerThreadConfigMVar <- newEmptyMVar
   sid <- forkIO $ do
     config <- takeMVar samplerThreadConfigMVar
@@ -84,22 +120,27 @@ setupSampleProfiler sampleAction delay = do
     forever $ do
       sampleAction config
       -- TODO: this is wrong, we don't sample every delay time as sampling takes time as well
-      threadDelay delay
+      threadDelay (profilerSamplingIntervalToThreadDelayTime delay)
 
-  let sampleThreadConf = MkSamplerProfilerConfig
+  let sampleThreadConf = MkStackProfilerManager
         { samplerThreadId = sid
         }
   putMVar samplerThreadConfigMVar sampleThreadConf
   pure sampleThreadConf
 
-isProfilerThread :: SamplerProfilerConfig -> ThreadId -> Maybe String -> Bool
-isProfilerThread MkSamplerProfilerConfig {samplerThreadId} tid _lbl = tid == samplerThreadId
+-- | We don't want to sample the stack profiler itself.
+isProfilerThread :: StackProfilerManager -> ThreadId -> Maybe String -> Bool
+isProfilerThread MkStackProfilerManager {samplerThreadId} tid _lbl = tid == samplerThreadId
 
+-- | RTS threads are often not that interesting, we much rather want to focus on
+-- the user code.
 isRtsThread :: ThreadId -> Maybe String -> Bool
 isRtsThread _    Nothing    = False
 isRtsThread _tid (Just lbl) =
   lbl `elem` ["TimerManager"] || "IOManager on cap" `List.isPrefixOf` lbl
 
+-- | Sample the stack of the 'ThreadId' if the thread is currently running.
+-- If the thread is not running (e.g., because it is dead), then we return 'Nothing'.
 sampleThread :: ThreadId -> IO (Maybe ThreadSample)
 sampleThread tid = do
   tidStatus <- threadStatus tid
@@ -116,6 +157,8 @@ sampleThread tid = do
       -- Only running threads need to be sampled
       pure Nothing
 
+-- | If the thread's callstack can be sampled, we serialise the sample
+-- and write into the eventlog for later processing.
 sampleToEventlog :: ThreadId -> IO ()
 sampleToEventlog tid = do
   sampleThread tid >>= \ case
