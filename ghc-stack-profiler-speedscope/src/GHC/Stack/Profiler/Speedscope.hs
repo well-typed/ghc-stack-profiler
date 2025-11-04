@@ -37,7 +37,14 @@ data SSOptions = SSOptions
   { file :: FilePath
   , isolateStart :: Maybe Text
   , isolateEnd :: Maybe Text
+  , aggregationMode :: Aggregation
   } deriving Show
+
+data Aggregation
+  = PerThread
+  | PerCapability
+  | NoAggregation
+  deriving (Show, Eq, Ord)
 
 optsParser :: Parser SSOptions
 optsParser = SSOptions
@@ -49,6 +56,12 @@ optsParser = SSOptions
     <> help "No samples before the first eventlog message with this prefix will be included in the output" ))
   <*> O.optional (strOption
     ( short 'e' <> long "end" <> metavar "STRING" <> help "No samples after the first eventlog message with this prefix will be included in the output" ))
+  <*>
+    (   flag' PerThread     (long "per-thread"     <> help "Group the profile per thread (default)")
+    <|> flag' PerCapability (long "per-capability" <> help "Group the profile per capability")
+    <|> flag' NoAggregation (long "no-aggregation" <> help "Perform no grouping, single view")
+    <|> pure  PerThread
+    )
 
 entry :: IO ()
 entry = do
@@ -61,7 +74,7 @@ entry = do
      <> header "hs-speedscope" )
 
 run :: SSOptions -> IO ()
-run SSOptions{ file, isolateStart, isolateEnd } = do
+run SSOptions{ file, isolateStart, isolateEnd, aggregationMode } = do
   -- We extract the 'InfoProv's before collecting the thread samples to avoid
   -- having to sort the 'InfoProv's and causing a memory leak.
   -- We reduce the memory usage considerably by doing this separately.
@@ -70,7 +83,7 @@ run SSOptions{ file, isolateStart, isolateEnd } = do
 
   -- Now do the actual work
   el <- either error id <$> readEventLogFromFile file
-  encodeFile (file ++ ".json") (convertToSpeedscope (isolateStart, isolateEnd) isInfoEvent processEventsDefault infoProv el)
+  encodeFile (file ++ ".json") (convertToSpeedscope aggregationMode (isolateStart, isolateEnd) isInfoEvent processEventsDefault infoProv el)
 
 -- | A Moore machine whose state indicates which delimiting markers have been
 -- seen. If both markers are 'Nothing', then the state will always be 'True'.
@@ -172,7 +185,9 @@ parseIpeTraces (is, ie) (EventLog _h (Data es)) =
 -- and `processEventsDefault` for the predicate and processing function,
 -- respectively.
 convertToSpeedscope
-  :: (Maybe Text, Maybe Text)
+  :: Aggregation
+  -- ^ How to aggregate the stack profile samples
+  -> (Maybe Text, Maybe Text)
   -- ^ Delimiting markers. No events before a user marker containing the first
   -- string will be included. No events after a user marker containing the
   -- second string will be included.
@@ -185,7 +200,7 @@ convertToSpeedscope
   -- ^ Already gathered table for 'InfoProv's that have been collected prior.
   -> EventLog
   -> Value
-convertToSpeedscope (is, ie) considerEvent processEvents infoProvs (EventLog _h (Data es)) =
+convertToSpeedscope mode (is, ie) considerEvent processEvents infoProvs (EventLog _h (Data es)) =
   case el_version of
     Just (ghc_version, _) | ghc_version < makeVersion [8,9,0]  ->
       error ("Eventlog is from ghc-" ++ showVersion ghc_version ++ " hs-speedscope only works with GHC 8.10 or later")
@@ -193,7 +208,7 @@ convertToSpeedscope (is, ie) considerEvent processEvents infoProvs (EventLog _h 
       where
         file = File
           { shared             = Shared{ frames = all_frames }
-          , profiles           = map (mkProfile profile_name interval) thread_samples
+          , profiles           = map (mkProfile profile_name interval) stack_profile_samples
           , name               = Just profile_name
           , activeProfileIndex = Just 0
           , exporter           = Just $ fromString version_string
@@ -222,10 +237,17 @@ convertToSpeedscope (is, ie) considerEvent processEvents infoProvs (EventLog _h 
       map snd . sortOn fst $
         map (fmap mkCostCentreFrame) (Map.elems userCostCentres)
 
-    thread_samples :: [(Word64, [[Int]])]
-    thread_samples =
-      -- groupSort is assumed to be stable
-      groupSort $ mapMaybe mkSample (reverse samples)
+    stack_profile_samples :: [(Word64, [[Int]])]
+    stack_profile_samples =
+      case mode of
+        PerThread ->
+          -- groupSort is assumed to be stable
+          groupSort $ map mkThreadSample (reverse samples)
+        PerCapability ->
+          -- groupSort is assumed to be stable
+          groupSort $ map mkCapabilitySample (reverse samples)
+        NoAggregation ->
+          [(1, map mkSingleProfileSample (reverse samples))]
 
     mkCostCentreFrame :: UserCostCentre -> Frame
     mkCostCentreFrame = \ case
@@ -256,10 +278,14 @@ convertToSpeedscope (is, ie) considerEvent processEvents infoProvs (EventLog _h 
         where
           (fileName, lineM, columnM) = tryParsingGhcSrcSpan infoProvSrcLoc
 
+    mkThreadSample :: Sample -> (Word64, [Int])
+    mkThreadSample (Sample ti _capId ccs) = (ti, map (word64ToInt . coerce) ccs)
 
+    mkCapabilitySample :: Sample -> (Word64, [Int])
+    mkCapabilitySample (Sample _ti capId ccs) = (coerce capId, map (word64ToInt . coerce) ccs)
 
-    mkSample :: Sample -> Maybe (Word64, [Int])
-    mkSample (Sample ti ccs) = Just (ti, map (word64ToInt . coerce) ccs)
+    mkSingleProfileSample :: Sample -> [Int]
+    mkSingleProfileSample (Sample _ti _capId ccs) = map (word64ToInt . coerce) ccs
 
 -- TODO: parsing of various src span formats
 -- currently supported:
@@ -333,13 +359,14 @@ processEventsDefault elProf (Event _t ei _c) =
       elProf
 
 addCallStackToProfile :: EventLogProfile -> CallStackMessage -> EventLogProfile
-addCallStackToProfile elProf MkCallStackMessage{callThreadId, callStack} =
+addCallStackToProfile elProf MkCallStackMessage{callThreadId, callCapabilityId, callStack} =
   let
     (newProf, ccs) = mapAccumR go elProf callStack
     go prof csi =
       swap $ lookupOrAddStackItemToProfile prof csi
     sample = Sample
       { sampleThreadId = callThreadId
+      , sampleCapabilityId = callCapabilityId
       , sampleCostCentreStack = reverse ccs
       }
   in
@@ -448,6 +475,7 @@ data InfoProv = InfoProv
 
 data Sample = Sample
   { sampleThreadId :: !Word64 -- ^ thread id
+  , sampleCapabilityId :: !CapabilityId -- ^ Capability id
   , sampleCostCentreStack :: [CostCentreId] -- ^ stack ids
   }
   deriving (Eq, Ord, Show)
