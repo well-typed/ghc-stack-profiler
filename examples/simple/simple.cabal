@@ -10,7 +10,7 @@ common warnings
     ghc-options: -Wall
 
 common runoptions
-    ghc-options: -threaded -rtsopts -fno-omit-yields
+    ghc-options: -threaded -rtsopts
 
 executable simple
     import:           warnings, runoptions

@@ -1,14 +1,20 @@
 {-# LANGUAGE MagicHash #-}
-module GHC.Stack.Profiler.Decode where
+module GHC.Stack.Profiler.Decode (
+  SymbolTable,
+  serializeThreadSample,
+  threadSampleToCallStackMessage,
+) where
 
 import Data.Binary
 import Data.Binary.Put
 import qualified Data.ByteString.Lazy as LBS
+import Data.IORef
 import qualified Data.Text as Text
 import Data.Typeable (cast)
 import Data.Maybe
 import qualified Data.List.NonEmpty as NonEmpty
 import Unsafe.Coerce
+import Data.Tuple
 
 import GHC.Stack.Annotation.Experimental
 import GHC.Stack.CloneStack (StackSnapshot(..))
@@ -18,23 +24,30 @@ import GHC.Internal.Heap.Closures
 import qualified GHC.Internal.Stack.Decode as Decode
 import GHC.Internal.Stack.Types
 
+import GHC.Stack.Profiler.SymbolTable
 import GHC.Stack.Profiler.ThreadSample
+import GHC.Stack.Profiler.Eventlog
 import GHC.Stack.Profiler.Util
 
-serializeThreadSample :: ThreadSample -> IO LBS.ByteString
-serializeThreadSample sample = do
-  callStackMessage <- threadSampleToCallStackMessage sample
-  pure $ runPut $ put callStackMessage
+type SymbolTable = SymbolTableWriter MapTable
 
-threadSampleToCallStackMessage :: ThreadSample -> IO CallStackMessage
-threadSampleToCallStackMessage sample = do
+serializeThreadSample :: IORef SymbolTable -> ThreadSample -> IO [LBS.ByteString]
+serializeThreadSample tableRef sample = do
+  eventlogMessages <- threadSampleToCallStackMessage tableRef sample
+  pure $ map (runPut . put) eventlogMessages
+
+threadSampleToCallStackMessage :: IORef SymbolTable -> ThreadSample -> IO [BinaryEventlogMessage]
+threadSampleToCallStackMessage tableRef sample = do
   frames <- decodeStackWithIpProvId $ threadSampleStackSnapshot sample
-  let stackMessages = fmap NonEmpty.head . NonEmpty.group $ mapMaybe (uncurry stackFrameToStackItem) frames
-  pure MkCallStackMessage
-    { callThreadId = fromThreadId $ threadSampleId sample
-    , callCapabilityId = threadSampleCapability sample
-    , callStack = stackMessages
-    }
+  let callStackItems = fmap NonEmpty.head . NonEmpty.group $ mapMaybe (uncurry stackFrameToStackItem) frames
+  let callStackMessage = MkCallStackMessage
+        { callThreadId = fromThreadId $ threadSampleId sample
+        , callCapabilityId = threadSampleCapability sample
+        , callStack = callStackItems
+        }
+  -- TODO: Abstract IORef SymbolTable somehow
+  atomicModifyIORef' tableRef $ \ table ->
+    swap $ dehydrateCallStackMessage table callStackMessage
 
 decodeStackWithIpProvId :: StackSnapshot -> IO [(StackFrame, Maybe Word64)]
 decodeStackWithIpProvId snapshot = do
@@ -90,4 +103,4 @@ stackFrameToStackItem frame mIpe =
               Nothing ->
                 Nothing
     _ ->
-      IpeId <$> mIpe
+      IpeId . MkIpeId <$> mIpe

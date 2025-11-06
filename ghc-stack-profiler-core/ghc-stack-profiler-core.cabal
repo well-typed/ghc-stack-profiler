@@ -26,6 +26,9 @@ library
     warnings, exts
 
   exposed-modules:
+    GHC.Stack.Profiler.Eventlog
+    GHC.Stack.Profiler.SourceLocation
+    GHC.Stack.Profiler.SymbolTable
     GHC.Stack.Profiler.ThreadSample
     GHC.Stack.Profiler.Util
 
@@ -33,7 +36,9 @@ library
     base,
     binary,
     bytestring,
+    containers,
     text,
+    transformers,
 
   hs-source-dirs:
     src

@@ -24,6 +24,7 @@ import Control.Exception
 import Control.Monad
 import qualified Data.ByteString.Lazy as LBS
 import qualified Data.List as List
+import Data.IORef
 import GHC.Conc
 import GHC.Conc.Sync
 
@@ -31,15 +32,18 @@ import GHC.Stack.CloneStack (cloneThreadStack)
 
 import qualified Debug.Trace.Binary.Compat as Compat
 import GHC.Stack.Profiler.Decode
+import GHC.Stack.Profiler.Eventlog
 import GHC.Stack.Profiler.ThreadSample
+import GHC.Stack.Profiler.SymbolTable
 import GHC.Stack.Profiler.Util
 
 -- | A 'StackProfilerManager' records all the relevant information
 -- to manage the ghc stack profiler run-time.
 data StackProfilerManager = MkStackProfilerManager
-  { samplerThreadId :: ThreadId
+  { profilerThreadId :: ThreadId
   -- ^ 'ThreadId' of the stack sampling thread.
-  } deriving (Show, Eq, Ord)
+  , symbolTableRef :: IORef SymbolTable
+  } deriving (Eq)
 
 -- | Sampling intervals for the stack profiler.
 data ProfilerSamplingInterval
@@ -71,7 +75,7 @@ withStackProfiler delay act = do
       tids <- listThreads
       userThreads <- filterM (isThreadOfInterest config) tids
       forM_ userThreads $ \tid ->
-        sampleToEventlog tid
+        sampleToEventlog (symbolTableRef config) tid
 
     isThreadOfInterest :: StackProfilerManager -> ThreadId -> IO Bool
     isThreadOfInterest config tid = do
@@ -94,7 +98,7 @@ withSampleProfilerForMyThread delay act = do
 -- Once the wrapped action terminates, the stack profiling stops.
 withStackProfilerForThread :: ThreadId -> ProfilerSamplingInterval -> IO a -> IO a
 withStackProfilerForThread tid delay act =
-  runWithStackProfiler (const (sampleToEventlog tid)) delay act
+  runWithStackProfiler (\ config -> (sampleToEventlog (symbolTableRef config) tid)) delay act
 
 -- ----------------------------------------------------------------------------
 -- Low-level user API
@@ -107,8 +111,8 @@ runWithStackProfiler sampleAction delay act = do
     else act
 
 stopStackProfilerManager :: StackProfilerManager -> IO ()
-stopStackProfilerManager MkStackProfilerManager{samplerThreadId} =
-  killThread samplerThreadId
+stopStackProfilerManager MkStackProfilerManager{profilerThreadId} =
+  killThread profilerThreadId
 
 setupStackProfilerManager :: (StackProfilerManager -> IO ()) -> ProfilerSamplingInterval -> IO StackProfilerManager
 setupStackProfilerManager sampleAction delay = do
@@ -122,15 +126,17 @@ setupStackProfilerManager sampleAction delay = do
       -- TODO: this is wrong, we don't sample every delay time as sampling takes time as well
       threadDelay (profilerSamplingIntervalToThreadDelayTime delay)
 
+  tableRef <- newIORef emptyMapSymbolTableWriter
   let sampleThreadConf = MkStackProfilerManager
-        { samplerThreadId = sid
+        { profilerThreadId = sid
+        , symbolTableRef = tableRef
         }
   putMVar samplerThreadConfigMVar sampleThreadConf
   pure sampleThreadConf
 
 -- | We don't want to sample the stack profiler itself.
 isProfilerThread :: StackProfilerManager -> ThreadId -> Maybe String -> Bool
-isProfilerThread MkStackProfilerManager {samplerThreadId} tid _lbl = tid == samplerThreadId
+isProfilerThread MkStackProfilerManager {profilerThreadId} tid _lbl = tid == profilerThreadId
 
 -- | RTS threads are often not that interesting, we much rather want to focus on
 -- the user code.
@@ -150,7 +156,7 @@ sampleThread tid = do
       stack <- cloneThreadStack tid
       pure $ Just $ ThreadSample
         { threadSampleId = tid
-        , threadSampleCapability = CapabilityId $ intToWord64 cap
+        , threadSampleCapability = MkCapabilityId $ intToWord64 cap
         , threadSampleStackSnapshot = stack
         }
     _ -> do
@@ -159,10 +165,10 @@ sampleThread tid = do
 
 -- | If the thread's callstack can be sampled, we serialise the sample
 -- and write into the eventlog for later processing.
-sampleToEventlog :: ThreadId -> IO ()
-sampleToEventlog tid = do
+sampleToEventlog :: IORef SymbolTable -> ThreadId -> IO ()
+sampleToEventlog tableRef tid = do
   sampleThread tid >>= \ case
     Nothing -> pure ()
     Just threadSample -> do
-      msg <- serializeThreadSample threadSample
-      Compat.traceBinaryEventIO $ LBS.toStrict msg
+      msgs <- serializeThreadSample tableRef threadSample
+      mapM_ (Compat.traceBinaryEventIO . LBS.toStrict) msgs

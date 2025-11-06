@@ -11,6 +11,8 @@ import Data.Tuple
 import Data.Functor.Identity (Identity (..))
 import qualified Data.ByteString.Lazy as LBS
 import Data.List.Extra
+import Data.List.NonEmpty (NonEmpty(..))
+import qualified Data.List.NonEmpty as NonEmpty
 import Data.Machine (Moore (..), source, (~>), ProcessT, PlanT, Is, construct, await, yield)
 import Data.Machine.Runner (foldlT)
 import Data.Maybe
@@ -32,6 +34,8 @@ import Data.Coerce (coerce)
 
 import GHC.Stack.Profiler.ThreadSample as ThreadSample
 import GHC.Stack.Profiler.Util
+import GHC.Stack.Profiler.Eventlog
+import GHC.Stack.Profiler.SymbolTable
 
 data SSOptions = SSOptions
   { file :: FilePath
@@ -163,22 +167,14 @@ parseIpeTraces
   -> EventLog
   -> IntMap InfoProv
 parseIpeTraces (is, ie) (EventLog _h (Data es)) =
-  infoProvs
+  info_provs
   where
-    Identity (EventLogProfile _ _ _ infoProvs _userCostCentres _counter _samples) =
+    Identity info_provs =
         foldlT processIpeEventsDefault initEL $
             source es ~>
             delimit isIpeInfoEvent (markers (is, ie))
 
-    initEL = EventLogProfile
-      { prog_name = Nothing
-      , rts_version = Nothing
-      , prof_interval = Nothing
-      , info_provs = IntMap.empty
-      , user_cost_centres = Map.empty
-      , cost_centre_counter = 0
-      , el_samples = []
-      }
+    initEL = IntMap.empty
 
 -- | Convert an 'EventLog' into a speedscope profile JSON value. To convert the
 -- event log using the traditional profile extraction logic, use `isInfoEvent`
@@ -214,7 +210,7 @@ convertToSpeedscope mode (is, ie) considerEvent processEvents infoProvs (EventLo
           , exporter           = Just $ fromString version_string
           }
   where
-    Identity (EventLogProfile (fromMaybe "" -> profile_name) el_version (fromMaybe 1 -> interval) _infoProvs userCostCentres _counter samples) =
+    Identity (EventLogProfile (fromMaybe "" -> profile_name) el_version (fromMaybe 1 -> interval) _infoProvs userCostCentres _counter samples _ _) =
         foldlT processEvents initEL $
             source es ~>
             delimit considerEvent (markers (is, ie))
@@ -227,6 +223,8 @@ convertToSpeedscope mode (is, ie) considerEvent processEvents infoProvs (EventLo
       , user_cost_centres = Map.empty
       , cost_centre_counter = 0
       , el_samples = []
+      , hydration_table = emptyIntMapTable
+      , current_callstack_chunks = []
       }
 
     version_string :: String
@@ -316,8 +314,8 @@ tryParsingGhcSrcSpan srcSpan =
       Left _ -> Nothing
       Right (number, _) -> Just number
 
-processIpeEventsDefault :: EventLogProfile -> Event -> EventLogProfile
-processIpeEventsDefault elProf (Event _t ei _c) =
+processIpeEventsDefault :: InfoProvMap -> Event -> InfoProvMap
+processIpeEventsDefault provMap (Event _t ei _c) =
   case ei of
     InfoTableProv { itTableName, itClosureDesc, itTyDesc, itInfo, itLabel, itSrcLoc, itModule } ->
       let
@@ -332,11 +330,9 @@ processIpeEventsDefault elProf (Event _t ei _c) =
           , infoTyDesc = itTyDesc
           }
       in
-        elProf
-          { info_provs = IntMap.insert (word64ToInt $ coerce key) prov (info_provs elProf)
-          }
+        IntMap.insert (word64ToInt $ coerce key) prov provMap
     _ ->
-      elProf
+      provMap
 
 -- | Default processing function to convert profiling events into a classic speedscope
 -- profile
@@ -350,11 +346,23 @@ processEventsDefault elProf (Event _t ei _c) =
     ProfBegin ival ->
       elProf { prof_interval = Just ival }
     UserBinaryMessage bs ->
-      case deserializeCallStackMessage $ LBS.fromStrict bs of
+      case deserializeEventlogMessage $ LBS.fromStrict bs of
         Left _err ->
           elProf
-        Right csMsg ->
-          addCallStackToProfile elProf csMsg
+        Right evMsg -> case evMsg of
+          CallStackFinal msg ->
+            let
+              (callStackMessage, elProf1) =
+                hydrateBinaryEventlog elProf msg
+            in
+              addCallStackToProfile elProf1 callStackMessage
+
+          CallStackChunk msg ->
+            elProf { current_callstack_chunks = msg : current_callstack_chunks elProf }
+          StringDef msg ->
+            elProf { hydration_table = insertTextMessage msg (hydration_table elProf) }
+          SourceLocationDef msg ->
+            elProf { hydration_table = insertSourceLocationMessage msg (hydration_table elProf) }
     _ ->
       elProf
 
@@ -367,17 +375,54 @@ addCallStackToProfile elProf MkCallStackMessage{callThreadId, callCapabilityId, 
     sample = Sample
       { sampleThreadId = callThreadId
       , sampleCapabilityId = callCapabilityId
-      , sampleCostCentreStack = reverse ccs
+      , sampleCostCentreStack =
+          -- TODO: Don't do the arbitrary cutoff, but reduce cycles.
+          -- And then do an arbitrary cutoff as speedscope has limits.
+          take 1000 $ reverse ccs
       }
   in
     newProf
       { el_samples = sample : el_samples newProf
       }
 
+hydrateBinaryEventlog :: EventLogProfile -> BinaryCallStackMessage -> (CallStackMessage, EventLogProfile)
+hydrateBinaryEventlog elProf msg =
+  let
+    chunks = current_callstack_chunks elProf
+    -- Why reverse?
+    -- When decoding the stack, we walk the stack from the top down.
+    -- Afterwards, the stack is chunked to fit into a single eventlog line,
+    -- and the chunks are written in ascending order to the eventlog.
+    -- When we pick up these messages one after another, they are prepended to
+    -- 'current_callstack_chunks', thus we are essentially storing the chunks in reverse
+    -- order, as the first chunk we encounter is the top of the stack, etc...
+    --
+    -- Concrete example, assuming a stack @[1,2,3,4,5,6]@ and chunk size of 2:
+    --
+    -- 1. Chunk it: @[1,2] [3,4] [5,6]@
+    -- 2. Write it to the eventlog in this order, so the messages are:
+    --    [1,2]
+    --    [3,4]
+    --    [5,6]
+    -- 3. When reading the eventlog, we store prepend later messages, resulting in:
+    --    [5,6] [3,4] [1,2]
+    -- 4. One reverse later: @[1,2] [3,4] [5,6]@
+    -- 5. Now we can finally concat the stack frame chunks.
+    orderedChunks = NonEmpty.reverse $ msg :| chunks
+    fullBinaryCallStackMessage = catCallStackMessage orderedChunks
+    callStackMessage =
+      hydrateEventlogCallStackMessage
+        (mkIntMapSymbolTableReader (hydration_table elProf))
+        fullBinaryCallStackMessage
+  in
+    ( callStackMessage
+    , elProf { current_callstack_chunks = [] }
+    )
+
 lookupOrAddStackItemToProfile :: EventLogProfile -> StackItem -> (CostCentreId, EventLogProfile)
 lookupOrAddStackItemToProfile elProf = \ case
   IpeId iid ->
-    lookupOrInsertCostCentre (CostCentreIpe (info_provs elProf IntMap.! word64ToInt iid))
+    lookupOrInsertCostCentre (CostCentreIpe (info_provs elProf IntMap.! idToInt iid))
   ThreadSample.UserMessage msg ->
     lookupOrInsertCostCentre (CostCentreMessage $ fromString msg)
   SourceLocation loc ->
@@ -435,12 +480,14 @@ parseIdent s = convert $ listToMaybe $ flip readP_to_S (Text.unpack s) $ do
 
     convert x = (\(a, b) -> (a, Text.pack b)) <$> x
 
+type InfoProvMap = IntMap InfoProv
+
 -- | The type we wish to convert event logs into
 data EventLogProfile = EventLogProfile
     { prog_name :: Maybe Text
     , rts_version :: Maybe (Version, Text)
     , prof_interval :: Maybe Word64
-    , info_provs :: !(IntMap InfoProv)
+    , info_provs :: InfoProvMap
     -- ^ Table of present 'InfoProv's in the eventlog
     , user_cost_centres :: !(Map UserCostCentre (CostCentreId, UserCostCentre))
     -- ^ All "cost centres" that are actually mentioned by `ghc-stack-profiler`.
@@ -448,7 +495,14 @@ data EventLogProfile = EventLogProfile
     -- ^ Unique Counter for the 'Sample's
     , el_samples :: [Sample]
     -- ^ All samples in the reverse order of finding them in the eventlog.
-    }  deriving (Eq, Ord, Show)
+    , hydration_table :: !IntMapTable
+    -- ^ The symbol table storing 'Text' and 'SourceLocation' symbols
+    -- for hydrating a 'BinaryCallStackMessage' into a 'CallStackMessage'.
+    , current_callstack_chunks :: [BinaryCallStackMessage]
+    -- ^ Chunks of 'BinaryCallStackMessage' we are currently decoding.
+    -- All chunks are assumed to be from the same callstack and will be decoded once a
+    -- 'CallStackFinal' message is encountered.
+    } deriving (Eq, Ord, Show)
 
 newtype CostCentreId = CostCentreId Word64
   deriving (Eq, Ord, Show)
