@@ -1,4 +1,4 @@
-{-# LANGUAGE NumericUnderscores #-}
+{-# OPTIONS -fno-omit-yields #-}
 module Main where
 
 import GHC.Stack.Annotation.Experimental

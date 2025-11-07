@@ -32,8 +32,8 @@ library
 
   exposed-modules:
     Debug.Trace.Binary.Compat
-    GHC.Stack.Profiler.Sampler
     GHC.Stack.Profiler.Decode
+    GHC.Stack.Profiler.Sampler
 
   build-depends:
     base,
