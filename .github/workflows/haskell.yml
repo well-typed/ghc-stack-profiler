@@ -20,7 +20,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
-        ghc-version: ['9.12', '9.10']
+        ghc-version: ['9.14.0', '9.12', '9.10']
 
     steps:
       - uses: actions/checkout@v4
@@ -33,6 +33,7 @@ jobs:
           # Defaults, added for clarity:
           cabal-version: 'latest'
           cabal-update: true
+          ghcup-release-channel: https://raw.githubusercontent.com/haskell/ghcup-metadata/refs/heads/develop/ghcup-prereleases-0.0.9.yaml
 
       - name: Configure the build
         run: |
