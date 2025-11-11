@@ -1,4 +1,4 @@
-module GHC.Stack.Profiler.SymbolTable (
+module GHC.Stack.Profiler.Core.SymbolTable (
   -- * Abstract interfaces for transforming 'CallStackMessage's and
   -- 'BinaryEventlogMessage' into each other.
   SymbolTableWriter(..),
@@ -22,9 +22,10 @@ import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
 import GHC.Generics (Generic)
 
-import GHC.Stack.Profiler.Eventlog
-import GHC.Stack.Profiler.SourceLocation
-import GHC.Stack.Profiler.Util
+import GHC.Stack.Profiler.Core.Eventlog
+import GHC.Stack.Profiler.Core.SourceLocation
+import GHC.Stack.Profiler.Core.Util
+import GHC.Stack (HasCallStack)
 
 -- ----------------------------------------------------------------------------
 -- Abstract interfaces for writing and reading to the symbol tables for deduplicating
@@ -179,8 +180,14 @@ insertSourceLocationMessage msg tbl =
 
 {-# INLINABLE lookupTextMessage #-}
 lookupTextMessage :: StringId -> IntMapTable -> Text
-lookupTextMessage sid tbl = stringLookupTable tbl IntMap.! idToInt sid
+lookupTextMessage sid tbl = stringLookupTable tbl `unsafeIntMapLookup` idToInt sid
 
 {-# INLINABLE lookupSourceLocationMessage #-}
 lookupSourceLocationMessage :: SourceLocationId -> IntMapTable -> SourceLocation
-lookupSourceLocationMessage sid tbl = srcLocLookupTable tbl IntMap.! idToInt sid
+lookupSourceLocationMessage sid tbl = srcLocLookupTable tbl `unsafeIntMapLookup` idToInt sid
+
+unsafeIntMapLookup :: HasCallStack => IntMap a -> Int -> a
+unsafeIntMapLookup tbl k = case IntMap.lookup k tbl of
+  Just v -> v
+  Nothing ->
+    error $ "Failed to find key: " ++ showAsHex k
