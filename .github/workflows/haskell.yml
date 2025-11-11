@@ -30,8 +30,7 @@ jobs:
         id: setup
         with:
           ghc-version: ${{ matrix.ghc-version }}
-          # Defaults, added for clarity:
-          cabal-version: 'latest'
+          cabal-version: '3.14.2.0'
           cabal-update: true
           ghcup-release-channel: https://raw.githubusercontent.com/haskell/ghcup-metadata/refs/heads/develop/ghcup-prereleases-0.0.9.yaml
 
