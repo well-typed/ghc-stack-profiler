@@ -18,6 +18,6 @@ executable simple
     build-depends:
         base,
         ghc-stack-profiler,
-        ghc-experimental,
+        ghc-stack-annotations,
     hs-source-dirs:   app
     default-language: Haskell2010

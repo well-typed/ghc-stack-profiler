@@ -1,4 +1,4 @@
-module GHC.Stack.Profiler.Util where
+module GHC.Stack.Profiler.Core.Util where
 
 import Control.Monad (replicateM)
 import Data.Binary
@@ -28,7 +28,7 @@ getTextWord16 = do
   pure $ Text.pack s
 
 showAsHex :: Integral a => a -> String
-showAsHex d = Numeric.showHex d ""
+showAsHex d = "0x" ++ Numeric.showHex d ""
 
 putWord64 :: Word64 -> Put
 putWord64 = putWord64be

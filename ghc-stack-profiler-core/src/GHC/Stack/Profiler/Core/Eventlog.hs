@@ -1,4 +1,4 @@
-module GHC.Stack.Profiler.Eventlog where
+module GHC.Stack.Profiler.Core.Eventlog where
 
 import Control.Monad (replicateM)
 import Data.Binary
@@ -7,7 +7,7 @@ import qualified Data.List as List
 import Data.Text (Text)
 import GHC.Generics
 
-import GHC.Stack.Profiler.Util
+import GHC.Stack.Profiler.Core.Util
 
 -- ----------------------------------------------------------------------------
 -- Eventlog Messages
@@ -43,6 +43,7 @@ data BinaryEventlogMessage
   | CallStackChunk !BinaryCallStackMessage
   | StringDef !BinaryStringMessage
   | SourceLocationDef !BinarySourceLocationMessage
+  deriving (Eq, Ord, Show, Generic)
 
 data BinaryCallStackMessage = MkBinaryCallStackMessage
   { binaryCallThreadId :: !Word64

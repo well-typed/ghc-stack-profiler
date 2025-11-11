@@ -1,4 +1,4 @@
-module GHC.Stack.Profiler.SourceLocation where
+module GHC.Stack.Profiler.Core.SourceLocation where
 
 import Data.Word (Word32)
 import Data.Text (Text)

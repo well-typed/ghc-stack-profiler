@@ -32,10 +32,10 @@ import GHC.Stack.CloneStack (cloneThreadStack)
 
 import qualified Debug.Trace.Binary.Compat as Compat
 import GHC.Stack.Profiler.Decode
-import GHC.Stack.Profiler.Eventlog
-import GHC.Stack.Profiler.ThreadSample
-import GHC.Stack.Profiler.SymbolTable
-import GHC.Stack.Profiler.Util
+import GHC.Stack.Profiler.Core.Eventlog
+import GHC.Stack.Profiler.Core.ThreadSample
+import GHC.Stack.Profiler.Core.SymbolTable
+import GHC.Stack.Profiler.Core.Util
 
 -- | A 'StackProfilerManager' records all the relevant information
 -- to manage the ghc stack profiler run-time.

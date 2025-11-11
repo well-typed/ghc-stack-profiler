@@ -1,7 +1,7 @@
 {-# OPTIONS -fno-omit-yields #-}
 module Main where
 
-import GHC.Stack.Annotation.Experimental
+import GHC.Stack.Annotation
 import GHC.Stack.Profiler.Sampler
 
 main :: IO ()
