@@ -65,18 +65,11 @@ jobs:
           path: ${{ steps.setup.outputs.cabal-store }}
           key: ${{ steps.cache.outputs.cache-primary-key }}
 
+      - name: Build all dependencies
+        run: cabal build all --only-dependencies
 
-      - name: Build ghc-stack-profiler-core
-        run: "cabal build -v3 lib:ghc-stack-profiler-core"
-
-      - name: Build ghc-stack-profiler
-        run: "cabal build -v3 lib:ghc-stack-profiler"
-
-      - name: Build ghc-stack-profiler-speedscope
-        run: "cabal build -v3 lib:ghc-stack-profiler-speedscope"
-
-      - name: Build simple exe
-        run: "cabal build -v3 exe:simple"
+      - name: Build all
+        run: cabal build -v3 all
 
       - name: Run tests
         run: cabal test all
