@@ -6,6 +6,7 @@ author: Hannes Siebenhandl, Wen Kokke, Matthew Pickering
 maintainer: hannes@well-typed.com
 build-type: Simple
 extra-doc-files: CHANGELOG.md
+tested-with: GHC ==9.14 || ==9.12 || ==9.10
 
 common warnings
   ghc-options:
@@ -26,11 +27,11 @@ library
     warnings, exts
 
   exposed-modules:
-    GHC.Stack.Profiler.Eventlog
-    GHC.Stack.Profiler.SourceLocation
-    GHC.Stack.Profiler.SymbolTable
-    GHC.Stack.Profiler.ThreadSample
-    GHC.Stack.Profiler.Util
+    GHC.Stack.Profiler.Core.Eventlog
+    GHC.Stack.Profiler.Core.SourceLocation
+    GHC.Stack.Profiler.Core.SymbolTable
+    GHC.Stack.Profiler.Core.ThreadSample
+    GHC.Stack.Profiler.Core.Util
 
   build-depends:
     base,

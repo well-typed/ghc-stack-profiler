@@ -6,6 +6,7 @@ author: Hannes Siebenhandl, Wen Kokke, Matthew Pickering
 maintainer: hannes@well-typed.com
 build-type: Simple
 extra-doc-files: CHANGELOG.md
+tested-with: GHC ==9.14 || ==9.12 || ==9.10
 
 common warnings
   ghc-options:
