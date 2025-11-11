@@ -32,10 +32,10 @@ import Data.IntMap (IntMap)
 import qualified Data.IntMap.Strict as IntMap
 import Data.Coerce (coerce)
 
-import GHC.Stack.Profiler.ThreadSample as ThreadSample
-import GHC.Stack.Profiler.Util
-import GHC.Stack.Profiler.Eventlog
-import GHC.Stack.Profiler.SymbolTable
+import GHC.Stack.Profiler.Core.ThreadSample as ThreadSample
+import GHC.Stack.Profiler.Core.Util
+import GHC.Stack.Profiler.Core.Eventlog
+import GHC.Stack.Profiler.Core.SymbolTable
 
 data SSOptions = SSOptions
   { file :: FilePath

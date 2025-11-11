@@ -1,6 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module GHC.Stack.Profiler.ThreadSample (
+module GHC.Stack.Profiler.Core.ThreadSample (
   ThreadSample(..),
   deserializeEventlogMessage,
 
@@ -30,10 +30,10 @@ import qualified Data.Text as Text
 import GHC.Generics
 
 import GHC.Stack.CloneStack (StackSnapshot)
-import GHC.Stack.Profiler.Eventlog
-import GHC.Stack.Profiler.Util
-import GHC.Stack.Profiler.SourceLocation
-import GHC.Stack.Profiler.SymbolTable
+import GHC.Stack.Profiler.Core.Eventlog
+import GHC.Stack.Profiler.Core.Util
+import GHC.Stack.Profiler.Core.SourceLocation
+import GHC.Stack.Profiler.Core.SymbolTable
 
 -- ----------------------------------------------------------------------------
 -- Thread Sample
