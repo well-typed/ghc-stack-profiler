@@ -6,7 +6,7 @@ author: Hannes Siebenhandl, Wen Kokke, Matthew Pickering
 maintainer: hannes@well-typed.com
 build-type: Simple
 extra-doc-files: CHANGELOG.md
-tested-with: GHC ==9.14 || ==9.12 || ==9.10
+tested-with: ghc ==9.14 || ==9.12 || ==9.10
 
 common warnings
   ghc-options:
@@ -15,12 +15,12 @@ common warnings
 
 common exts
   default-extensions:
+    DeriveGeneric
+    DerivingStrategies
     DuplicateRecordFields
+    LambdaCase
     NamedFieldPuns
     ViewPatterns
-    LambdaCase
-    DerivingStrategies
-    DeriveGeneric
 
 library
   import:
@@ -45,4 +45,3 @@ library
     src
 
   default-language: GHC2021
-

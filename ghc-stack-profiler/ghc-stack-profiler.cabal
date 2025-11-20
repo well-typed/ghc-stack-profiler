@@ -6,7 +6,7 @@ author: Hannes Siebenhandl, Wen Kokke, Matthew Pickering
 maintainer: hannes@well-typed.com
 build-type: Simple
 extra-doc-files: CHANGELOG.md
-tested-with: GHC ==9.14 || ==9.12 || ==9.10
+tested-with: ghc ==9.14 || ==9.12 || ==9.10
 
 common warnings
   ghc-options:
@@ -15,13 +15,13 @@ common warnings
 
 common exts
   default-extensions:
-    DuplicateRecordFields
-    NamedFieldPuns
-    ViewPatterns
-    LambdaCase
-    DerivingStrategies
     DeriveGeneric
+    DerivingStrategies
+    DuplicateRecordFields
+    LambdaCase
+    NamedFieldPuns
     PatternSynonyms
+    ViewPatterns
 
 flag use-ghc-trace-events
   description: Use the package 'ghc-trace-events'
@@ -37,8 +37,8 @@ library
     GHC.Internal.ClosureTypes.Compat
     GHC.Internal.Heap.Closures.Compat
     GHC.Internal.InfoProv.Types.Compat
-    GHC.Internal.Stack.Decode.Compat
     GHC.Internal.Stack.Constants.Compat
+    GHC.Internal.Stack.Decode.Compat
     GHC.Stack.Annotation.Experimental.Compat
     GHC.Stack.Profiler.Decode
     GHC.Stack.Profiler.Sampler
@@ -53,29 +53,30 @@ library
     base,
     binary,
     bytestring,
+    ghc-heap,
     ghc-internal,
     ghc-stack-profiler-core,
     text,
-    ghc-heap,
 
-  if impl(ghc >= 9.14)
-    build-depends: ghc-experimental,
+  if impl(ghc >=9.14)
+    build-depends: ghc-experimental
 
   if flag(use-ghc-trace-events)
     cpp-options:
-        -DUSE_GHC_TRACE_EVENTS
+      -DUSE_GHC_TRACE_EVENTS
+
     build-depends:
-        ghc-trace-events,
+      ghc-trace-events
   else
     build-depends:
-        ghc-prim,
+      ghc-prim
 
-  if impl(ghc < 9.14)
+  if impl(ghc <9.14)
     cmm-sources:
       cbits/Stack.cmm
+
     c-sources:
       cbits/Stack_c.c
-
   hs-source-dirs:
     src
 
