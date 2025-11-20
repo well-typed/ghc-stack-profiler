@@ -46,9 +46,6 @@ library
     GHC.Stack.Profiler.Stack.Decode
     GHC.Stack.Profiler.Util
 
-  autogen-modules:
-    GHC.Internal.InfoProv.Types.Compat
-
   build-depends:
     base,
     binary,
