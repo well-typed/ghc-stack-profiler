@@ -1,7 +1,7 @@
 module GHC.Stack.Profiler.Sampler (
   -- * Run sample profiler
   withStackProfiler,
-  withSampleProfilerForMyThread,
+  withStackProfilerForMyThread,
   withStackProfilerForThread,
   -- * Configuration of sample profiler
   StackProfilerManager(..),
@@ -88,8 +88,8 @@ withStackProfiler delay act = do
 -- | Sample the current thread every 'ProfilerSamplingInterval' for the duration of
 -- the wrapped action.
 -- Once the wrapped action terminates, the stack profiling stops.
-withSampleProfilerForMyThread :: ProfilerSamplingInterval -> IO a -> IO a
-withSampleProfilerForMyThread delay act = do
+withStackProfilerForMyThread :: ProfilerSamplingInterval -> IO a -> IO a
+withStackProfilerForMyThread delay act = do
   tid <- myThreadId
   withStackProfilerForThread tid delay act
 
@@ -98,7 +98,7 @@ withSampleProfilerForMyThread delay act = do
 -- Once the wrapped action terminates, the stack profiling stops.
 withStackProfilerForThread :: ThreadId -> ProfilerSamplingInterval -> IO a -> IO a
 withStackProfilerForThread tid delay act =
-  runWithStackProfiler (\ config -> (sampleToEventlog (symbolTableRef config) tid)) delay act
+  runWithStackProfiler (\ config -> sampleToEventlog (symbolTableRef config) tid) delay act
 
 -- ----------------------------------------------------------------------------
 -- Low-level user API
@@ -151,17 +151,23 @@ sampleThread :: ThreadId -> IO (Maybe ThreadSample)
 sampleThread tid = do
   tidStatus <- threadStatus tid
   (cap, _lockedToCap) <- threadCapability tid
-  case tidStatus of
-    ThreadRunning -> do
+  case canCloneStack tidStatus of
+    True -> do
       stack <- cloneThreadStack tid
       pure $ Just $ ThreadSample
         { threadSampleId = tid
         , threadSampleCapability = MkCapabilityId $ intToWord64 cap
         , threadSampleStackSnapshot = stack
         }
-    _ -> do
+    False -> do
       -- Only running threads need to be sampled
       pure Nothing
+  where
+    canCloneStack :: ThreadStatus -> Bool
+    canCloneStack = \ case
+      ThreadRunning -> True
+      ThreadBlocked BlockedOnMVar -> True
+      _ -> False
 
 -- | If the thread's callstack can be sampled, we serialise the sample
 -- and write into the eventlog for later processing.
