@@ -8,35 +8,36 @@ module GHC.Internal.InfoProv.Types.Compat (
 
 import Data.Word
 import Foreign.Ptr
-import Foreign.Marshal.Alloc
+#if !MIN_VERSION_ghc_internal(9,1500,0)
 import Foreign.C.Types
-#if MIN_VERSION_ghc_internal(9,1500,0)
 import Foreign.Storable (peekByteOff)
-#else
+import Foreign.Marshal.Alloc
 import GHC.Stack.Profiler.Util (castPtrToWord64)
 #endif
 
 import qualified GHC.Internal.InfoProv.Types as InfoProv
 
+#if MIN_VERSION_ghc_internal(9,1500,0)
+foreign import ccall "lookupIPEId" c_lookupIPEId ::
+  Ptr InfoProv.StgInfoTable ->
+  IO Word64
+#else
 foreign import ccall "lookupIPE" c_lookupIPE ::
   Ptr InfoProv.StgInfoTable ->
   Ptr InfoProv.InfoProvEnt ->
   IO CBool
+#endif
 
 lookupIpeId :: Ptr InfoProv.StgInfoTable -> IO (Maybe Word64)
-lookupIpeId itbl =
+lookupIpeId itbl = do
+#if MIN_VERSION_ghc_internal(9,1500,0)
+  c_lookupIPEId itbl >>= \ case
+    0 -> pure Nothing
+    ipeId -> pure $ Just ipeId
+#else
   allocaBytes (#size InfoProvEnt) $ \p -> do
     res <- c_lookupIPE itbl p
     case res of
-      1 ->
-#if MIN_VERSION_ghc_internal(9,1500,0)
-        Just `fmap` peekIpProvId (InfoProv.ipeProv p)
-#else
-        pure $ Just $ castPtrToWord64 itbl
-#endif
+      1 -> pure $ Just $ castPtrToWord64 itbl
       _ -> return Nothing
-
-#if MIN_VERSION_ghc_internal(9,1500,0)
-peekIpProvId :: Ptr InfoProv.InfoProv -> IO Word64
-peekIpProvId p  =  (# peek InfoProv, info_prov_id) p
 #endif
