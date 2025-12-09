@@ -10,7 +10,6 @@ import Data.Word
 import Foreign.Ptr
 #if !MIN_VERSION_ghc_internal(9,1500,0)
 import Foreign.C.Types
-import Foreign.Storable (peekByteOff)
 import Foreign.Marshal.Alloc
 import GHC.Stack.Profiler.Util (castPtrToWord64)
 #endif

@@ -5,7 +5,14 @@ license: BSD-3-Clause
 author: Hannes Siebenhandl, Wen Kokke, Matthew Pickering
 maintainer: hannes@well-typed.com
 build-type: Simple
+synopsis: Convert eventlog messages from `ghc-stack-profiler` into a speedscope json.
+description:
+  Convert eventlog messages from `ghc-stack-profiler` into a speedscope json.
+  Produce a flame graph for the RTS callstack samples obtained from a program instrumented with
+  'ghc-stack-profiler'.
+
 extra-doc-files: CHANGELOG.md
+category: Profiling, Benchmarking, Development
 tested-with: ghc ==9.14 || ==9.12 || ==9.10
 
 common warnings
@@ -35,17 +42,17 @@ library
     GHC.Stack.Profiler.Speedscope
 
   build-depends:
-    aeson,
-    base,
-    bytestring,
-    containers,
-    extra,
-    ghc-events,
-    ghc-stack-profiler-core,
-    hs-speedscope,
-    machines,
-    optparse-applicative,
-    text,
+    aeson >=2.2 && <2.3,
+    base >=4.20 && <4.23,
+    bytestring >=0.11   && <0.13,
+    containers >=0.6.8 && <0.9,
+    extra ^>=1.8.1,
+    ghc-events ^>=0.20,
+    ghc-stack-profiler-core ^>=0.1,
+    hs-speedscope ^>=0.3,
+    machines ^>=0.7.4,
+    optparse-applicative ^>=0.19,
+    text >=2 && <2.2,
 
   hs-source-dirs:
     src

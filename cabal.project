@@ -2,15 +2,9 @@ packages:
     ghc-stack-profiler/
     ghc-stack-profiler-core/
     ghc-stack-profiler-speedscope/
+
+optional-packages:
     examples/simple/
-
-package *
-    ghc-options: -finfo-table-map -fdistinct-constructor-tables
-
-source-repository-package
-    type: git
-    location: https://github.com/fendor/ghc-stack-annotations.git
-    tag: 0667af1cec1b20ba7fed4a5de675afe81a8ae07d
 
 if impl(ghc >=9.14)
     allow-newer:
