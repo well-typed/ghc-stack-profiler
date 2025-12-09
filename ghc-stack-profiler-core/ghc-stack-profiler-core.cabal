@@ -5,7 +5,13 @@ license: BSD-3-Clause
 author: Hannes Siebenhandl, Wen Kokke, Matthew Pickering
 maintainer: hannes@well-typed.com
 build-type: Simple
+synopsis: Thread sample types and serialisation logic for `ghc-stack-profiler`.
+description:
+  Thread sample types and serialisation logic for `ghc-stack-profiler`.
+  Defines the interface and serialisation logic to turn an RTS Callstack into a binary message suitable for the eventlog.
+
 extra-doc-files: CHANGELOG.md
+category: Profiling, Benchmarking, Development
 tested-with: ghc ==9.14 || ==9.12 || ==9.10
 
 common warnings
@@ -34,12 +40,12 @@ library
     GHC.Stack.Profiler.Core.Util
 
   build-depends:
-    base,
-    binary,
-    bytestring,
-    containers,
-    text,
-    transformers,
+    base >=4.20 && <4.23,
+    binary >=0.8.9.3 && <0.11,
+    bytestring >=0.11   && <0.13,
+    containers >=0.6.8 && <0.9,
+    text >=2 && <2.2,
+    transformers ^>=0.6.2,
 
   hs-source-dirs:
     src

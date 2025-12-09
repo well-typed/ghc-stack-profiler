@@ -12,8 +12,6 @@ The profiling samples can be exported to [`speedscope.app`](https://www.speedsco
 > 🚧 **Under Construction** 🚧
 >
 > This project is currently being developed. The API may change at any moment and is unstable.
->
-> **This project requires the [WIP GHC branch `wip/fendor/ghc-stack-profiler`](https://gitlab.haskell.org/ghc/ghc/-/tree/wip/fendor/ghc-stack-profiler).**
 
 ## Usage
 
@@ -23,7 +21,7 @@ To profile a program it needs to be compiled and instrumented with the `ghc-stac
 import GHC.Stack.Profiler.Sampler
 
 main :: IO ()
-main = withSampleProfilerForMyThread (SampleIntervalMs 10) $ do
+main = withStackProfilerForMyThread (SampleIntervalMs 10) $ do
     ...
 ```
 
