@@ -74,3 +74,9 @@ executable ghc-stack-profiler-speedscope
     ghc-stack-profiler-speedscope,
 
   default-language: GHC2021
+
+source-repository head
+  type: git
+  location: https://github.com/well-typed/ghc-stack-profiler.git
+  subdir: ghc-stack-profiler-speedscope
+
