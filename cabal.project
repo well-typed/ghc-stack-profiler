@@ -12,3 +12,8 @@ if impl(ghc >=9.14)
         template-haskell,
         ghc-bignum,
         containers,
+
+source-repository-package
+    type: git
+    location: https://github.com/well-typed/ipedb.git
+    tag: 8e4be73ba989fbe1f04654af6cfed310b2f13d6e
