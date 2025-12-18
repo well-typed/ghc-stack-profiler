@@ -5,6 +5,12 @@ packages:
 
 optional-packages:
     examples/simple/
+    examples/simple-scope/
+    examples/eventlog-socket-example/
+
+if !os(windows)
+    -- In this project, we always build with '+control' on non-windows
+    flags: +control
 
 if impl(ghc >=9.14)
     allow-newer:
