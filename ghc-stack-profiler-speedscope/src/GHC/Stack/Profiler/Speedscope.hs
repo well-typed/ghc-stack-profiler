@@ -1,6 +1,5 @@
 {-# LANGUAGE CPP               #-}
 {-# LANGUAGE OverloadedStrings #-}
-
 module GHC.Stack.Profiler.Speedscope where
 
 import Data.String ( fromString )
@@ -22,8 +21,7 @@ import Data.Text (Text)
 import Data.Version
 import Data.Word
 import GHC.RTS.Events hiding (header, str)
-import qualified Options.Applicative as O
-import Options.Applicative hiding (optional)
+import qualified Options.Applicative as Options
 import Speedscope.Schema
 import Text.ParserCombinators.ReadP hiding (between)
 import Data.Map (Map)
@@ -31,63 +29,54 @@ import qualified Data.Map.Strict as Map
 import Data.IntMap (IntMap)
 import qualified Data.IntMap.Strict as IntMap
 import Data.Coerce (coerce)
+import qualified System.IO.Unsafe as Unsafe
 
 import GHC.Stack.Profiler.Core.ThreadSample as ThreadSample
 import GHC.Stack.Profiler.Core.Util
 import GHC.Stack.Profiler.Core.Eventlog
 import GHC.Stack.Profiler.Core.SymbolTable
-
-data SSOptions = SSOptions
-  { file :: FilePath
-  , isolateStart :: Maybe Text
-  , isolateEnd :: Maybe Text
-  , aggregationMode :: Aggregation
-  } deriving Show
-
-data Aggregation
-  = PerThread
-  | PerCapability
-  | NoAggregation
-  deriving (Show, Eq, Ord)
-
-optsParser :: Parser SSOptions
-optsParser = SSOptions
-  <$> argument str (metavar "FILE.eventlog")
-  <*> O.optional (strOption
-    ( short 's'
-    <> long "start"
-    <> metavar "STRING"
-    <> help "No samples before the first eventlog message with this prefix will be included in the output" ))
-  <*> O.optional (strOption
-    ( short 'e' <> long "end" <> metavar "STRING" <> help "No samples after the first eventlog message with this prefix will be included in the output" ))
-  <*>
-    (   flag' PerThread     (long "per-thread"     <> help "Group the profile per thread (default)")
-    <|> flag' PerCapability (long "per-capability" <> help "Group the profile per capability")
-    <|> flag' NoAggregation (long "no-aggregation" <> help "Perform no grouping, single view")
-    <|> pure  PerThread
-    )
+import qualified IpeDb.Types as IpeDb
+import qualified IpeDb.Query as IpeDb
+import qualified IpeDb.InfoProv as IpeDb
+import GHC.Stack.Profiler.Speedscope.Options
+import qualified GHC.Stack.Profiler.Speedscope.Options as IpeDbConf (IpeConf(..))
+import GHC.Stack.Profiler.Speedscope.Types
+import GHC.Stack.Profiler.Speedscope.IpeDb (toSpeedscopeInfoProv)
+import qualified IpeDb.Eventlog.Index as IpeDb
 
 entry :: IO ()
 entry = do
-  os <- execParser opts
+  os <- Options.execParser options
   run os
-  where
-    opts = info (optsParser <**> helper)
-      ( fullDesc
-     <> progDesc "Generate a speedscope.app json file from an eventlog"
-     <> header "hs-speedscope" )
 
 run :: SSOptions -> IO ()
-run SSOptions{ file, isolateStart, isolateEnd, aggregationMode } = do
+run SSOptions{ file, isolateStart, isolateEnd, aggregationMode, ipeDbConf } = withOptionalIpeDb ipeDbConf $ \mInfoProvDb -> do
   -- We extract the 'InfoProv's before collecting the thread samples to avoid
-  -- having to sort the 'InfoProv's and causing a memory leak.
+  -- having to sort the 'InfoProv's and causing a space leak.
   -- We reduce the memory usage considerably by doing this separately.
-  elIpe <- either error id <$> readEventLogFromFile file
-  let infoProv = parseIpeTraces  (isolateStart, isolateEnd) elIpe
+  oracle <- case mInfoProvDb of
+    Just (conf, db) -> do
+      case index conf of
+        True -> IpeDb.generateInfoProvDb db file
+        False -> pure ()
+      pure $ oracleFromInfoProvDb db
+    Nothing -> do
+      elIpe <- either error id <$> readEventLogFromFile file
+      let infoProv = parseIpeTraces (isolateStart, isolateEnd) elIpe
+      pure $ oracleFromMap infoProv
 
   -- Now do the actual work
   el <- either error id <$> readEventLogFromFile file
-  encodeFile (file ++ ".json") (convertToSpeedscope aggregationMode (isolateStart, isolateEnd) isInfoEvent processEventsDefault infoProv el)
+  encodeFile (file ++ ".json") (convertToSpeedscope aggregationMode (isolateStart, isolateEnd) isInfoEvent processEventsDefault oracle el)
+
+withOptionalIpeDb :: Maybe IpeConf -> (Maybe (IpeConf, IpeDb.InfoProvDb) -> IO a) -> IO ()
+withOptionalIpeDb mConf act = case mConf of
+  Nothing -> do
+    _ <- act Nothing
+    pure ()
+  Just conf -> IpeDb.withInfoProvDb (IpeDbConf.file conf) $ \ db -> do
+    _ <- act (Just (conf, db))
+    pure ()
 
 -- | A Moore machine whose state indicates which delimiting markers have been
 -- seen. If both markers are 'Nothing', then the state will always be 'True'.
@@ -162,20 +151,6 @@ delimit p =
             when (s || p ei) $ yield e
             go mm
 
-parseIpeTraces
-  :: (Maybe Text, Maybe Text)
-  -> EventLog
-  -> IntMap InfoProv
-parseIpeTraces (is, ie) (EventLog _h (Data es)) =
-  info_provs
-  where
-    Identity info_provs =
-        foldlT processIpeEventsDefault initEL $
-            source es ~>
-            delimit isIpeInfoEvent (markers (is, ie))
-
-    initEL = IntMap.empty
-
 -- | Convert an 'EventLog' into a speedscope profile JSON value. To convert the
 -- event log using the traditional profile extraction logic, use `isInfoEvent`
 -- and `processEventsDefault` for the predicate and processing function,
@@ -192,11 +167,11 @@ convertToSpeedscope
   -> (EventLogProfile -> Event -> EventLogProfile)
   -- ^ Specifies how to build the profile given the events included based on the
   -- delimiters and predicate
-  -> IntMap InfoProv
+  -> InfoProvOracle
   -- ^ Already gathered table for 'InfoProv's that have been collected prior.
   -> EventLog
   -> Value
-convertToSpeedscope mode (is, ie) considerEvent processEvents infoProvs (EventLog _h (Data es)) =
+convertToSpeedscope mode (is, ie) considerEvent processEvents infoProvOracle (EventLog _h (Data es)) =
   case el_version of
     Just (ghc_version, _) | ghc_version < makeVersion [8,9,0]  ->
       error ("Eventlog is from ghc-" ++ showVersion ghc_version ++ " hs-speedscope only works with GHC 8.10 or later")
@@ -210,7 +185,7 @@ convertToSpeedscope mode (is, ie) considerEvent processEvents infoProvs (EventLo
           , exporter           = Just $ fromString version_string
           }
   where
-    Identity (EventLogProfile (fromMaybe "" -> profile_name) el_version (fromMaybe 1 -> interval) _infoProvs userCostCentres _counter samples _ _) =
+    Identity (EventLogProfile (fromMaybe "" -> profile_name) el_version (fromMaybe 1 -> interval) _infoProvOracle userCostCentres _counter samples _ _) =
         foldlT processEvents initEL $
             source es ~>
             delimit considerEvent (markers (is, ie))
@@ -219,7 +194,7 @@ convertToSpeedscope mode (is, ie) considerEvent processEvents infoProvs (EventLo
       { prog_name = Nothing
       , rts_version = Nothing
       , prof_interval = Nothing
-      , info_provs = infoProvs
+      , info_prov_oracle = infoProvOracle
       , user_cost_centres = Map.empty
       , cost_centre_counter = 0
       , el_samples = []
@@ -422,7 +397,7 @@ hydrateBinaryEventlog elProf msg =
 lookupOrAddStackItemToProfile :: EventLogProfile -> StackItem -> (CostCentreId, EventLogProfile)
 lookupOrAddStackItemToProfile elProf = \ case
   IpeId iid ->
-    lookupOrInsertCostCentre (CostCentreIpe (info_provs elProf IntMap.! idToInt iid))
+    lookupOrInsertCostCentre (CostCentreIpe (findInfoProv (info_prov_oracle elProf) iid))
   ThreadSample.UserMessage msg ->
     lookupOrInsertCostCentre (CostCentreMessage $ fromString msg)
   SourceLocation loc ->
@@ -480,14 +455,12 @@ parseIdent s = convert $ listToMaybe $ flip readP_to_S (Text.unpack s) $ do
 
     convert x = (\(a, b) -> (a, Text.pack b)) <$> x
 
-type InfoProvMap = IntMap InfoProv
-
 -- | The type we wish to convert event logs into
 data EventLogProfile = EventLogProfile
     { prog_name :: Maybe Text
     , rts_version :: Maybe (Version, Text)
     , prof_interval :: Maybe Word64
-    , info_provs :: InfoProvMap
+    , info_prov_oracle :: InfoProvOracle
     -- ^ Table of present 'InfoProv's in the eventlog
     , user_cost_centres :: !(Map UserCostCentre (CostCentreId, UserCostCentre))
     -- ^ All "cost centres" that are actually mentioned by `ghc-stack-profiler`.
@@ -502,34 +475,41 @@ data EventLogProfile = EventLogProfile
     -- ^ Chunks of 'BinaryCallStackMessage' we are currently decoding.
     -- All chunks are assumed to be from the same callstack and will be decoded once a
     -- 'CallStackFinal' message is encountered.
-    } deriving (Eq, Ord, Show)
+    }
 
-newtype CostCentreId = CostCentreId Word64
-  deriving (Eq, Ord, Show)
-  deriving newtype (Num)
+-- ----------------------------------------------------------------------------
+-- Oracle for Info Provs
+-- ----------------------------------------------------------------------------
 
-newtype InfoProvId = InfoProvId Word64
-  deriving (Eq, Ord, Show)
-
-data UserCostCentre
-  = CostCentreMessage !Text
-  | CostCentreSrcLoc !SourceLocation
-  | CostCentreIpe !InfoProv
-  deriving (Eq, Ord, Show)
-
-data InfoProv = InfoProv
-  { infoProvId :: !InfoProvId
-  , infoProvSrcLoc :: !Text
-  , infoProvModule :: !Text
-  , infoProvLabel :: !Text
-  , infoTableName :: !Text
-  , infoClosureDesc :: !Int
-  , infoTyDesc :: !Text
-  }  deriving (Eq, Ord, Show)
-
-data Sample = Sample
-  { sampleThreadId :: !Word64 -- ^ thread id
-  , sampleCapabilityId :: !CapabilityId -- ^ Capability id
-  , sampleCostCentreStack :: [CostCentreId] -- ^ stack ids
+newtype InfoProvOracle = InfoProvOracle
+  { findInfoProv :: IpeId -> InfoProv
   }
-  deriving (Eq, Ord, Show)
+
+oracleFromMap :: IntMap InfoProv -> InfoProvOracle
+oracleFromMap infoProvs = InfoProvOracle (\ipeId -> infoProvs IntMap.! idToInt ipeId)
+
+oracleFromInfoProvDb :: IpeDb.InfoProvDb -> InfoProvOracle
+oracleFromInfoProvDb infoProvDb = InfoProvOracle (\ipeId -> case Unsafe.unsafePerformIO (IpeDb.lookupInfoProv infoProvDb (IpeDb.IpeId (getIpeId ipeId))) of
+  Nothing -> error $ "Failed to find info prov with id: " ++ show ipeId
+  Just ipedb_info_prov -> toSpeedscopeInfoProv ipedb_info_prov
+  )
+
+-- ----------------------------------------------------------------------------
+-- In-memory Info Prov DB
+-- ----------------------------------------------------------------------------
+
+type InfoProvMap = IntMap InfoProv
+
+parseIpeTraces
+  :: (Maybe Text, Maybe Text)
+  -> EventLog
+  -> IntMap InfoProv
+parseIpeTraces (is, ie) (EventLog _h (Data es)) =
+  info_provs
+  where
+    Identity info_provs =
+        foldlT processIpeEventsDefault initEL $
+            source es ~>
+            delimit isIpeInfoEvent (markers (is, ie))
+
+    initEL = IntMap.empty

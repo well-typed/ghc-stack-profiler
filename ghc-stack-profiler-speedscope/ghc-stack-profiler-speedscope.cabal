@@ -28,6 +28,7 @@ common exts
     LambdaCase
     NamedFieldPuns
     ViewPatterns
+    NoImportQualifiedPost
 
 common runopts
   ghc-options:
@@ -40,16 +41,20 @@ library
 
   exposed-modules:
     GHC.Stack.Profiler.Speedscope
+    GHC.Stack.Profiler.Speedscope.IpeDb
+    GHC.Stack.Profiler.Speedscope.Options
+    GHC.Stack.Profiler.Speedscope.Types
 
   build-depends:
     aeson >=2.2 && <2.3,
     base >=4.20 && <4.23,
-    bytestring >=0.11   && <0.13,
+    bytestring >=0.11 && <0.13,
     containers >=0.6.8 && <0.9,
     extra ^>=1.8.1,
     ghc-events ^>=0.20,
     ghc-stack-profiler-core ^>=0.1,
     hs-speedscope ^>=0.3,
+    ipedb ^>=0.1.0.0,
     machines ^>=0.7.4,
     optparse-applicative ^>=0.19,
     text >=2 && <2.2,
@@ -79,4 +84,3 @@ source-repository head
   type: git
   location: https://github.com/well-typed/ghc-stack-profiler.git
   subdir: ghc-stack-profiler-speedscope
-
