@@ -18,10 +18,10 @@ The profiling samples can be exported to [`speedscope.app`](https://www.speedsco
 To profile a program it needs to be compiled and instrumented with the `ghc-stack-profiler` package via:
 
 ```haskell
-import GHC.Stack.Profiler.Sampler
+import GHC.Stack.Profiler
 
 main :: IO ()
-main = withStackProfilerForMyThread (SampleIntervalMs 10) $ do
+main = setupRootStackProfiler True $ \ manager -> withStackProfilerForMyThread manager (SampleIntervalMs 10) $ do
     ...
 ```
 

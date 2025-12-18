@@ -2,8 +2,8 @@ module GHC.Stack.Profiler.Util (
   castPtrToWord64,
 ) where
 
-import Foreign.Ptr
 import Data.Word
+import Foreign.Ptr
 
 castPtrToWord64 :: Ptr a -> Word64
 castPtrToWord64 ptr = case ptrToWordPtr ptr of
