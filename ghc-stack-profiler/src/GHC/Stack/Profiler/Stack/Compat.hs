@@ -24,5 +24,3 @@ lookupIpeIdForStackFrame itbl = do
   -- the struct address, otherwise the decoder will not be able to find the 'InfoProv'.
   pure $ castPtrToWord64 (infoTableStructPtr itbl) <$ mId
 #endif
-
-

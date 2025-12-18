@@ -1,5 +1,5 @@
 cabal-version:   3.8
-name:            simple
+name:            eventlog-socket-example
 version:         0.1.0.0
 license:         NONE
 author:          Hannes Siebenhandl
@@ -15,12 +15,15 @@ common run-options
 common comp-options
     ghc-options: -finfo-table-map -fdistinct-constructor-tables
 
-executable simple
+executable eventlog-socket-example
     import:           warnings, run-options, comp-options
     main-is:          Main.hs
     build-depends:
         base,
         ghc-stack-profiler,
         ghc-stack-annotations,
+        eventlog-socket,
+        temporary,
+        directory,
     hs-source-dirs:   app
     default-language: Haskell2010

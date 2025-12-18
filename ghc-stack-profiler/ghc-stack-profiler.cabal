@@ -67,6 +67,7 @@ common exts
     DuplicateRecordFields
     LambdaCase
     NamedFieldPuns
+    NoImportQualifiedPost
     PatternSynonyms
     ViewPatterns
 
@@ -90,7 +91,9 @@ library
     GHC.Internal.Stack.Constants.Compat
     GHC.Internal.Stack.Decode.Compat
     GHC.Stack.Annotation.Experimental.Compat
+    GHC.Stack.Profiler
     GHC.Stack.Profiler.Decode
+    GHC.Stack.Profiler.FFI
     GHC.Stack.Profiler.Sampler
     GHC.Stack.Profiler.Stack.Compat
     GHC.Stack.Profiler.Stack.Decode
@@ -100,9 +103,12 @@ library
     base >=4.20 && <4.23,
     binary >=0.8.9.3 && <0.11,
     bytestring >=0.11 && <0.13,
+    containers >=0.6.8 && <0.9,
+    eventlog-socket ^>=0.1,
     ghc-heap >=9.10.1 && <9.16,
     ghc-internal >=9.1001 && <9.1600,
-    ghc-stack-profiler-core ^>=0.1,
+    ghc-stack-profiler-core ^>=0.1.0,
+    stm ^>=2.5.3.0 || ^>=2.5.0.0,
     text >=2 && <2.2,
 
   if impl(ghc >=9.14)
@@ -124,6 +130,12 @@ library
 
     c-sources:
       cbits/Stack_c.c
+  -- eventlog-socket custom command support
+  c-sources:
+    cbits/custom-command-handler.c
+
+  include-dirs: cbits
+  includes: custom-command-handler.h
   hs-source-dirs:
     src
 
