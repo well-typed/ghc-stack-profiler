@@ -70,8 +70,11 @@ common exts
     DuplicateRecordFields
     LambdaCase
     NamedFieldPuns
+    NoImportQualifiedPost
     PatternSynonyms
     ViewPatterns
+
+  default-language: GHC2021
 
 flag use-ghc-trace-events
   description:
@@ -80,6 +83,13 @@ flag use-ghc-trace-events
 
   manual: True
   default: True
+
+flag control
+  description:
+    Enable @eventlog-socket@ control commands.
+
+  manual: True
+  default: False
 
 library
   import:
@@ -93,7 +103,9 @@ library
     GHC.Internal.Stack.Constants.Compat
     GHC.Internal.Stack.Decode.Compat
     GHC.Stack.Annotation.Experimental.Compat
+    GHC.Stack.Profiler
     GHC.Stack.Profiler.Decode
+    GHC.Stack.Profiler.FFI
     GHC.Stack.Profiler.Sampler
     GHC.Stack.Profiler.Stack.Compat
     GHC.Stack.Profiler.Stack.Decode
@@ -103,10 +115,15 @@ library
     base >=4.20 && <4.23,
     binary >=0.8.9.3 && <0.11,
     bytestring >=0.11 && <0.13,
+    containers >=0.6.8 && <0.9,
     ghc-heap >=9.10.1 && <9.16,
     ghc-internal >=9.1001 && <9.1600,
-    ghc-stack-profiler-core ^>=0.1,
+    ghc-stack-profiler-core ^>=0.1.0,
+    stm ^>=2.5.3.0 || ^>=2.5.0.0,
     text >=2 && <2.2,
+
+  hs-source-dirs:
+    src
 
   if impl(ghc >=9.14)
     build-depends: ghc-experimental >=9.1400 && <9.1600
@@ -121,16 +138,21 @@ library
     build-depends:
       ghc-prim
 
+  -- Custom stack decoding for GHC <9.14
   if impl(ghc <9.14)
     cmm-sources:
       cbits/Stack.cmm
 
     c-sources:
       cbits/Stack_c.c
-  hs-source-dirs:
-    src
 
-  default-language: GHC2021
+  -- eventlog-socket custom command support
+  if flag(control) && !os(windows)
+    cpp-options:
+      -DEVENTLOG_SOCKET_SUPPORT
+
+    build-depends:
+      eventlog-socket ^>=0.1
 
 source-repository head
   type: git

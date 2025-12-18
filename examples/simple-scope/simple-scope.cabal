@@ -1,5 +1,5 @@
 cabal-version:   3.8
-name:            simple
+name:            simple-scope
 version:         0.1.0.0
 license:         NONE
 author:          Hannes Siebenhandl
@@ -14,8 +14,8 @@ common run-options
 
 common comp-options
     ghc-options: -finfo-table-map -fdistinct-constructor-tables
-
-executable simple
+    
+executable simple-scope
     import:           warnings, run-options, comp-options
     main-is:          Main.hs
     build-depends:
