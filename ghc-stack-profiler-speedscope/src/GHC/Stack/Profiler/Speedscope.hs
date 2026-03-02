@@ -2,47 +2,46 @@
 {-# LANGUAGE OverloadedStrings #-}
 module GHC.Stack.Profiler.Speedscope where
 
-import Data.String ( fromString )
 import Control.Monad
 import Data.Aeson
-import Data.Char
-import Data.Tuple
-import Data.Functor.Identity (Identity (..))
 import qualified Data.ByteString.Lazy as LBS
+import Data.Char
+import Data.Coerce (coerce)
+import Data.Functor.Identity (Identity (..))
+import Data.IntMap (IntMap)
+import qualified Data.IntMap.Strict as IntMap
 import Data.List.Extra
-import Data.List.NonEmpty (NonEmpty(..))
+import Data.List.NonEmpty (NonEmpty (..))
 import qualified Data.List.NonEmpty as NonEmpty
-import Data.Machine (Moore (..), source, (~>), ProcessT, PlanT, Is, construct, await, yield)
+import Data.Machine (Is, Moore (..), PlanT, ProcessT, await, construct, source, yield, (~>))
 import Data.Machine.Runner (foldlT)
+import Data.Map (Map)
+import qualified Data.Map.Strict as Map
 import Data.Maybe
+import Data.String (fromString)
+import Data.Text (Text)
 import qualified Data.Text as Text
 import qualified Data.Text.Read as Read
-import Data.Text (Text)
+import Data.Tuple
 import Data.Version
 import Data.Word
 import GHC.RTS.Events hiding (header, str)
 import qualified Options.Applicative as Options
 import Speedscope.Schema
-import Text.ParserCombinators.ReadP hiding (between)
-import Data.Map (Map)
-import qualified Data.Map.Strict as Map
-import Data.IntMap (IntMap)
-import qualified Data.IntMap.Strict as IntMap
-import Data.Coerce (coerce)
 import qualified System.IO.Unsafe as Unsafe
+import Text.ParserCombinators.ReadP hiding (between)
 
-import GHC.Stack.Profiler.Core.ThreadSample as ThreadSample
-import GHC.Stack.Profiler.Core.Util
 import GHC.Stack.Profiler.Core.Eventlog
 import GHC.Stack.Profiler.Core.SymbolTable
-import qualified IpeDb.Types as IpeDb
-import qualified IpeDb.Query as IpeDb
-import qualified IpeDb.InfoProv as IpeDb
-import GHC.Stack.Profiler.Speedscope.Options
-import qualified GHC.Stack.Profiler.Speedscope.Options as IpeDbConf (IpeConf(..))
-import GHC.Stack.Profiler.Speedscope.Types
+import GHC.Stack.Profiler.Core.ThreadSample as ThreadSample
+import GHC.Stack.Profiler.Core.Util
 import GHC.Stack.Profiler.Speedscope.IpeDb (toSpeedscopeInfoProv)
-import qualified IpeDb.Eventlog.Index as IpeDb
+import GHC.Stack.Profiler.Speedscope.Options
+import qualified GHC.Stack.Profiler.Speedscope.Options as IpeDbConf (IpeConf (..))
+import GHC.Stack.Profiler.Speedscope.Types
+import qualified IpeDb.InfoProv as IpeDb
+import qualified IpeDb.Query as IpeDb
+import qualified IpeDb.Types as IpeDb
 
 entry :: IO ()
 entry = do
@@ -57,7 +56,7 @@ run SSOptions{ file, isolateStart, isolateEnd, aggregationMode, ipeDbConf } = wi
   oracle <- case mInfoProvDb of
     Just (conf, db) -> do
       case index conf of
-        True -> IpeDb.generateInfoProvDb db file
+        True -> IpeDb.populateFromEventlog db file
         False -> pure ()
       pure $ oracleFromInfoProvDb db
     Nothing -> do
