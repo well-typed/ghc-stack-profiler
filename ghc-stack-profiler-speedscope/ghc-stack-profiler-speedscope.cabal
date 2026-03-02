@@ -13,7 +13,10 @@ description:
 
 extra-doc-files: CHANGELOG.md
 category: Profiling, Benchmarking, Development
-tested-with: ghc ==9.14 || ==9.12 || ==9.10
+tested-with:
+  ghc ==9.10.3
+  ghc ==9.12.2
+  ghc ==9.14.1
 
 common warnings
   ghc-options:
@@ -27,8 +30,8 @@ common exts
     DuplicateRecordFields
     LambdaCase
     NamedFieldPuns
-    ViewPatterns
     NoImportQualifiedPost
+    ViewPatterns
 
 common runopts
   ghc-options:
