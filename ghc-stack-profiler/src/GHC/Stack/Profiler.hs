@@ -4,6 +4,7 @@ module GHC.Stack.Profiler (
   withStackProfilerForMyThread,
   withStackProfilerForThread,
   setupRootStackProfiler,
+  stopStackProfilerManager,
 
   -- * Configuration of sample profiler
   StackProfilerManager (..),
@@ -17,7 +18,7 @@ module GHC.Stack.Profiler (
   -- sample profilers threads
   runWithStackProfiler,
   setupStackProfilerThread,
-  stopStackProfilerManager,
+  stopStackProfilerThread,
   sampleToEventlog,
 
   -- * Thread filtering
