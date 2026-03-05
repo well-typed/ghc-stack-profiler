@@ -8,7 +8,7 @@ module GHC.Stack.Profiler.FFI (
   stopProfiler,
 ) where
 
-import GHC.Stack.Profiler.Sampler
+import GHC.Stack.Profiler.Manager
 import qualified Control.Monad.STM as STM
 import qualified Control.Concurrent.STM.TVar as TVar
 #if defined(EVENTLOG_SOCKET_SUPPORT)

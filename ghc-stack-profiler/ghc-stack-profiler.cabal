@@ -106,12 +106,13 @@ library
     GHC.Stack.Profiler
     GHC.Stack.Profiler.Decode
     GHC.Stack.Profiler.FFI
-    GHC.Stack.Profiler.Sampler
+    GHC.Stack.Profiler.Manager
     GHC.Stack.Profiler.Stack.Compat
     GHC.Stack.Profiler.Stack.Decode
     GHC.Stack.Profiler.Util
 
   build-depends:
+    async >=2.2 && <2.2.6,
     base >=4.20 && <4.23,
     binary >=0.8.9.3 && <0.11,
     bytestring >=0.11 && <0.13,
