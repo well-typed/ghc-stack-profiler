@@ -1,9 +1,10 @@
-module GHC.Stack.Profiler.Sampler (
+module GHC.Stack.Profiler.Manager (
   StackProfilerManager (..),
   newStackProfilerManager,
 ) where
 
-import Control.Concurrent
+import Control.Concurrent (ThreadId)
+import Control.Concurrent.Async (Async)
 import Control.Concurrent.STM.TVar
 import Data.Set (Set)
 import qualified Data.Set as Set
@@ -13,8 +14,8 @@ import GHC.Stack.Profiler.Decode
 -- | A 'StackProfilerManager' records all the relevant information
 -- to manage the ghc stack profiler run-time.
 data StackProfilerManager = MkStackProfilerManager
-  { profilerThreads :: !(TVar (Set ThreadId))
-  -- ^ 'ThreadId' of the stack sampling thread.
+  { profilerThreads :: !(TVar (Set (Async ()), Set ThreadId))
+  -- ^ 'Async' of the stack sampling thread.
   , symbolTableRef :: !(TVar SymbolTable)
   , isRunning :: !(TVar Bool)
   , isShuttingDown :: !(TVar Bool)
@@ -24,7 +25,7 @@ data StackProfilerManager = MkStackProfilerManager
 newStackProfilerManager :: Bool -> IO StackProfilerManager
 newStackProfilerManager running = do
   MkStackProfilerManager
-    <$> newTVarIO Set.empty
+    <$> newTVarIO (Set.empty, Set.empty)
     <*> newTVarIO emptyMapSymbolTableWriter
     <*> newTVarIO running
     <*> newTVarIO False

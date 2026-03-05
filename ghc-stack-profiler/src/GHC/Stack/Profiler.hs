@@ -35,6 +35,7 @@ import GHC.Conc.Sync (fromThreadId, threadLabel)
 
 import GHC.Stack.CloneStack (cloneThreadStack)
 
+import Control.Concurrent.Async
 import qualified Control.Concurrent.STM.TVar as STM
 import qualified Control.Monad.STM as STM
 import Data.Foldable (traverse_)
@@ -46,7 +47,7 @@ import GHC.Stack.Profiler.Core.ThreadSample
 import GHC.Stack.Profiler.Core.Util
 import GHC.Stack.Profiler.Decode
 import qualified GHC.Stack.Profiler.FFI as FFI
-import GHC.Stack.Profiler.Sampler
+import GHC.Stack.Profiler.Manager
 
 -- | Sampling intervals for the stack profiler.
 data ProfilerSamplingInterval
@@ -83,11 +84,11 @@ withStackProfiler manager delay act = do
   isThreadOfInterest :: StackProfilerManager -> ThreadId -> IO Bool
   isThreadOfInterest config tid = do
     lbl <- threadLabel tid
-    threads <- readTVarIO (profilerThreads config)
+    (_, threadIds) <- readTVarIO (profilerThreads config)
     pure $
       not $
         or
-          [ isProfilerThread threads tid
+          [ isProfilerThread threadIds tid
           , isRtsThread tid lbl
           ]
 
@@ -126,26 +127,27 @@ runWithStackProfiler manager sampleAction delay act = do
   if Compat.userTracingEnabled
     then bracket (setupStackProfilerThread manager sampleAction delay) (uncurry stopStackProfilerThread) (const act)
     else act
-    
+
 stopStackProfilerManager :: StackProfilerManager -> IO ()
 stopStackProfilerManager MkStackProfilerManager{isShuttingDown, profilerThreads} = do
-  threads <- atomically $ do
+  (threads, _) <- atomically $ do
     writeTVar isShuttingDown True
     readTVar profilerThreads
-  traverse_ killThread threads
+  traverse_ cancel threads
 
-stopStackProfilerThread :: ThreadId -> StackProfilerManager -> IO ()
-stopStackProfilerThread profilerId MkStackProfilerManager{profilerThreads} = do
-  killThread profilerId
+stopStackProfilerThread :: Async () -> StackProfilerManager -> IO ()
+stopStackProfilerThread profilerThread MkStackProfilerManager{profilerThreads} = do
+  cancel profilerThread
     `finally` atomically
       ( do
-          STM.modifyTVar' profilerThreads (Set.delete profilerId)
+        STM.modifyTVar' profilerThreads ( \ ( threads, threadIds) ->
+            (Set.delete profilerThread threads, Set.delete (asyncThreadId profilerThread) threadIds))
       )
 
-setupStackProfilerThread :: StackProfilerManager -> IO () -> ProfilerSamplingInterval -> IO (ThreadId, StackProfilerManager)
+setupStackProfilerThread :: StackProfilerManager -> IO () -> ProfilerSamplingInterval -> IO (Async (), StackProfilerManager)
 setupStackProfilerThread manager sampleAction delay = do
   barrier <- newEmptyMVar
-  sid <- forkIO $ do
+  worker <- async $ do
     () <- takeMVar barrier
     sampleThreadId <- myThreadId
     labelThread sampleThreadId ("Sample Profiler Thread " <> show (fromThreadId sampleThreadId))
@@ -156,16 +158,19 @@ setupStackProfilerThread manager sampleAction delay = do
       -- TODO: this is wrong, we don't sample every delay time as sampling takes time as well
       threadDelay (profilerSamplingIntervalToThreadDelayTime delay)
 
+  -- if the worker crashes for any reason, we want to know
+  link worker
+
   atomically $ do
-    STM.modifyTVar' (profilerThreads manager) $ \threads ->
-      Set.insert sid threads
+    STM.modifyTVar' (profilerThreads manager) $ \(threads, threadIds) ->
+      (Set.insert worker threads, Set.insert (asyncThreadId worker) threadIds)
   putMVar barrier ()
-  pure (sid, manager)
+  pure (worker, manager)
 
 -- | We don't want to sample the stack profiler threads themselves.
 isProfilerThread :: Set ThreadId -> ThreadId -> Bool
-isProfilerThread threads tid =
-  Set.member tid threads
+isProfilerThread profilerThreadIds tid =
+  Set.member tid profilerThreadIds
 
 -- | RTS threads are often not that interesting, we much rather want to focus on
 -- the user code.
