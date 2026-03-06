@@ -25,7 +25,7 @@ import qualified Data.Text.Read as Read
 import Data.Tuple
 import Data.Version
 import Data.Word
-import GHC.RTS.Events hiding (header, str)
+import GHC.RTS.Events hiding (StringId, header, str)
 import qualified Options.Applicative as Options
 import Speedscope.Schema
 import qualified System.IO.Unsafe as Unsafe
@@ -42,6 +42,8 @@ import GHC.Stack.Profiler.Speedscope.Types
 import qualified IpeDb.InfoProv as IpeDb
 import qualified IpeDb.Query as IpeDb
 import qualified IpeDb.Types as IpeDb
+import Data.Either (partitionEithers)
+import System.IO
 
 entry :: IO ()
 entry = do
@@ -66,7 +68,8 @@ run SSOptions{ file, isolateStart, isolateEnd, aggregationMode, ipeDbConf } = wi
 
   -- Now do the actual work
   el <- either error id <$> readEventLogFromFile file
-  encodeFile (file ++ ".json") (convertToSpeedscope aggregationMode (isolateStart, isolateEnd) isInfoEvent processEventsDefault oracle el)
+  profileJson <- convertToSpeedscope aggregationMode (isolateStart, isolateEnd) isInfoEvent processEventsDefault oracle el
+  encodeFile (file ++ ".json") profileJson
 
 withOptionalIpeDb :: Maybe IpeConf -> (Maybe (IpeConf, IpeDb.InfoProvDb) -> IO a) -> IO ()
 withOptionalIpeDb mConf act = case mConf of
@@ -150,76 +153,36 @@ delimit p =
             when (s || p ei) $ yield e
             go mm
 
--- | Convert an 'EventLog' into a speedscope profile JSON value. To convert the
--- event log using the traditional profile extraction logic, use `isInfoEvent`
--- and `processEventsDefault` for the predicate and processing function,
--- respectively.
-convertToSpeedscope
-  :: Aggregation
-  -- ^ How to aggregate the stack profile samples
-  -> (Maybe Text, Maybe Text)
-  -- ^ Delimiting markers. No events before a user marker containing the first
-  -- string will be included. No events after a user marker containing the
-  -- second string will be included.
-  -> (EventInfo -> Bool)
-  -- ^ Only consider events which satisfy this predicate
-  -> (EventLogProfile -> Event -> EventLogProfile)
-  -- ^ Specifies how to build the profile given the events included based on the
-  -- delimiters and predicate
-  -> InfoProvOracle
-  -- ^ Already gathered table for 'InfoProv's that have been collected prior.
-  -> EventLog
-  -> Value
-convertToSpeedscope mode (is, ie) considerEvent processEvents infoProvOracle (EventLog _h (Data es)) =
-  case el_version of
-    Just (ghc_version, _) | ghc_version < makeVersion [8,9,0]  ->
-      error ("Eventlog is from ghc-" ++ showVersion ghc_version ++ " hs-speedscope only works with GHC 8.10 or later")
-    _ -> toJSON file
-      where
-        file = File
-          { shared             = Shared{ frames = all_frames }
-          , profiles           = map (mkProfile profile_name interval) stack_profile_samples
-          , name               = Just profile_name
-          , activeProfileIndex = Just 0
-          , exporter           = Just $ fromString version_string
-          }
+processEventLogProfileState :: Aggregation -> EventLogProfileState -> EventLogProfile
+processEventLogProfileState mode evProfileState =
+  EventLogProfile
+    { profileProgName = profile_name
+    , profileFrames = all_frames
+    , profileProfiles = map (mkProfile profile_name interval) stack_profile_samples
+    , profileProgVersionString = Text.pack $ "ghc-stack-profiler-speedscope@" ++ CURRENT_PACKAGE_VERSION
+    , profileProcessingErrors = decoding_errors evProfileState
+    }
   where
-    Identity (EventLogProfile (fromMaybe "" -> profile_name) el_version (fromMaybe 1 -> interval) _infoProvOracle userCostCentres _counter samples _ _) =
-        foldlT processEvents initEL $
-            source es ~>
-            delimit considerEvent (markers (is, ie))
+    profile_name = fromMaybe "" (eventlog_prog_name evProfileState)
 
-    initEL = EventLogProfile
-      { prog_name = Nothing
-      , rts_version = Nothing
-      , prof_interval = Nothing
-      , info_prov_oracle = infoProvOracle
-      , user_cost_centres = Map.empty
-      , cost_centre_counter = 0
-      , el_samples = []
-      , hydration_table = emptyIntMapTable
-      , current_callstack_chunks = []
-      }
-
-    version_string :: String
-    version_string = "hs-speedscope@" ++ CURRENT_PACKAGE_VERSION
+    interval = fromMaybe 1 (prof_interval evProfileState)
 
     all_frames :: [Frame]
     all_frames =
       map snd . sortOn fst $
-        map (fmap mkCostCentreFrame) (Map.elems userCostCentres)
+        map (fmap mkCostCentreFrame) (Map.elems $ user_cost_centres evProfileState)
 
     stack_profile_samples :: [(Word64, [[Int]])]
     stack_profile_samples =
       case mode of
         PerThread ->
           -- groupSort is assumed to be stable
-          groupSort $ map mkThreadSample (reverse samples)
+          groupSort $ map mkThreadSample (reverse $ el_samples evProfileState)
         PerCapability ->
           -- groupSort is assumed to be stable
-          groupSort $ map mkCapabilitySample (reverse samples)
+          groupSort $ map mkCapabilitySample (reverse $ el_samples evProfileState)
         NoAggregation ->
-          [(1, map mkSingleProfileSample (reverse samples))]
+          [(1, map mkSingleProfileSample (reverse $ el_samples evProfileState))]
 
     mkCostCentreFrame :: UserCostCentre -> Frame
     mkCostCentreFrame = \ case
@@ -258,6 +221,68 @@ convertToSpeedscope mode (is, ie) considerEvent processEvents infoProvOracle (Ev
 
     mkSingleProfileSample :: Sample -> [Int]
     mkSingleProfileSample (Sample _ti _capId ccs) = map (word64ToInt . coerce) ccs
+
+-- | Convert an 'EventLog' into a speedscope profile JSON value. To convert the
+-- event log using the traditional profile extraction logic, use `isInfoEvent`
+-- and `processEventsDefault` for the predicate and processing function,
+-- respectively.
+convertToSpeedscope
+  :: Aggregation
+  -- ^ How to aggregate the stack profile samples
+  -> (Maybe Text, Maybe Text)
+  -- ^ Delimiting markers. No events before a user marker containing the first
+  -- string will be included. No events after a user marker containing the
+  -- second string will be included.
+  -> (EventInfo -> Bool)
+  -- ^ Only consider events which satisfy this predicate
+  -> (EventLogProfileState -> Event -> EventLogProfileState)
+  -- ^ Specifies how to build the profile given the events included based on the
+  -- delimiters and predicate
+  -> InfoProvOracle
+  -- ^ Already gathered table for 'InfoProv's that have been collected prior.
+  -> EventLog
+  -> IO Value
+convertToSpeedscope mode (is, ie) considerEvent processEvents infoProvOracle (EventLog _h (Data es)) = do
+  eventLogProfileState <-
+    foldlT processEvents initEL $
+        source es ~>
+        delimit considerEvent (markers (is, ie))
+  let eventlogProfile = processEventLogProfileState mode eventLogProfileState
+  logDecodingErrors eventlogProfile
+  pure $ toJSON File
+    { shared             = Shared{ frames = profileFrames eventlogProfile }
+    , profiles           = profileProfiles eventlogProfile
+    , name               = Just $ profileProgName eventlogProfile
+    , activeProfileIndex = Just 0
+    , exporter           = Just $ profileProgVersionString eventlogProfile
+    }
+  where
+    initEL = EventLogProfileState
+      { eventlog_prog_name = Nothing
+      , rts_version = Nothing
+      , prof_interval = Nothing
+      , info_prov_oracle = infoProvOracle
+      , user_cost_centres = Map.empty
+      , cost_centre_counter = 0
+      , el_samples = []
+      , hydration_table = emptyIntMapTable
+      , current_callstack_chunks = []
+      , decoding_errors = []
+      }
+
+    logDecodingErrors prof = case profileProcessingErrors prof of
+      [] -> pure ()
+      errorStacks -> do
+        hPutStrLn stderr $ show (length errorStacks) ++ " CallStacks were decoded incompletely or not at all."
+        forM_ errorStacks $ \ stack -> do
+          let
+            size = length stack
+
+          forM_ (take 10 stack) $ \ err -> do
+            hPutStrLn stderr ("  " ++ prettyEventLogError err)
+
+          when (size > 10) $ do
+            hPutStrLn stderr ("  ... and " ++ show (size - 10) ++ " more." )
 
 -- TODO: parsing of various src span formats
 -- currently supported:
@@ -310,11 +335,11 @@ processIpeEventsDefault provMap (Event _t ei _c) =
 
 -- | Default processing function to convert profiling events into a classic speedscope
 -- profile
-processEventsDefault :: EventLogProfile -> Event -> EventLogProfile
+processEventsDefault :: EventLogProfileState -> Event -> EventLogProfileState
 processEventsDefault elProf (Event _t ei _c) =
   case ei of
     ProgramArgs _ (pname: _args) ->
-      elProf { prog_name = Just pname }
+      elProf { eventlog_prog_name = Just pname }
     RtsIdentifier _ rts_ident ->
       elProf { rts_version = parseIdent rts_ident }
     ProfBegin ival ->
@@ -336,14 +361,20 @@ processEventsDefault elProf (Event _t ei _c) =
           StringDef msg ->
             elProf { hydration_table = insertTextMessage msg (hydration_table elProf) }
           SourceLocationDef msg ->
-            elProf { hydration_table = insertSourceLocationMessage msg (hydration_table elProf) }
+            case insertSourceLocationMessage msg (hydration_table elProf) of
+              Left err ->
+                addDecodingErrorsForStack [fromMissingKeyError err] elProf
+
+              Right newTable ->
+                elProf { hydration_table = newTable }
     _ ->
       elProf
 
-addCallStackToProfile :: EventLogProfile -> CallStackMessage -> EventLogProfile
+addCallStackToProfile :: EventLogProfileState -> CallStackMessage -> EventLogProfileState
 addCallStackToProfile elProf MkCallStackMessage{callThreadId, callCapabilityId, callStack} =
   let
-    (newProf, ccs) = mapAccumR go elProf callStack
+    (newProf, ccsOrError) = mapAccumR go elProf callStack
+    (errors, ccs) = partitionEithers ccsOrError
     go prof csi =
       swap $ lookupOrAddStackItemToProfile prof csi
     sample = Sample
@@ -355,11 +386,13 @@ addCallStackToProfile elProf MkCallStackMessage{callThreadId, callCapabilityId, 
           take 1000 $ reverse ccs
       }
   in
-    newProf
-      { el_samples = sample : el_samples newProf
-      }
+    addDecodingErrorsForStack
+      errors
+      newProf
+        { el_samples = sample : el_samples newProf
+        }
 
-hydrateBinaryEventlog :: EventLogProfile -> BinaryCallStackMessage -> (CallStackMessage, EventLogProfile)
+hydrateBinaryEventlog :: EventLogProfileState -> BinaryCallStackMessage -> (CallStackMessage, EventLogProfileState)
 hydrateBinaryEventlog elProf msg =
   let
     chunks = current_callstack_chunks elProf
@@ -384,33 +417,42 @@ hydrateBinaryEventlog elProf msg =
     -- 5. Now we can finally concat the stack frame chunks.
     orderedChunks = NonEmpty.reverse $ msg :| chunks
     fullBinaryCallStackMessage = catCallStackMessage orderedChunks
-    callStackMessage =
+    (callStackMessage, errs) =
       hydrateEventlogCallStackMessage
         (mkIntMapSymbolTableReader (hydration_table elProf))
         fullBinaryCallStackMessage
   in
     ( callStackMessage
-    , elProf { current_callstack_chunks = [] }
+    , addDecodingErrorsForStack
+        (map fromBinaryError errs)
+        elProf { current_callstack_chunks = [] }
     )
 
-lookupOrAddStackItemToProfile :: EventLogProfile -> StackItem -> (CostCentreId, EventLogProfile)
+lookupOrAddStackItemToProfile :: EventLogProfileState -> StackItem -> (Either EventLogError CostCentreId, EventLogProfileState)
 lookupOrAddStackItemToProfile elProf = \ case
-  IpeId iid ->
-    lookupOrInsertCostCentre (CostCentreIpe (findInfoProv (info_prov_oracle elProf) iid))
+  IpeId iid -> do
+    case findInfoProv (info_prov_oracle elProf) iid of
+      Nothing ->
+        (Left $ UnknownIpeId iid, elProf)
+      Just prov ->
+        lookupOrInsertCostCentre (CostCentreIpe prov)
+
   ThreadSample.UserMessage msg ->
     lookupOrInsertCostCentre (CostCentreMessage $ fromString msg)
+
   SourceLocation loc ->
     lookupOrInsertCostCentre (CostCentreSrcLoc loc)
+
   where
     lookupOrInsertCostCentre userMessage =
       case Map.lookup userMessage (user_cost_centres elProf) of
-        Just (cid, _) -> (cid, elProf)
+        Just (cid, _) -> (Right cid, elProf)
         Nothing ->
           let
             key = userMessage
             cid = cost_centre_counter elProf
           in
-            ( cid
+            ( Right cid
             , elProf
               { cost_centre_counter = cid + 1
               , user_cost_centres = Map.insert key (cid, key) (user_cost_centres elProf)
@@ -454,44 +496,90 @@ parseIdent s = convert $ listToMaybe $ flip readP_to_S (Text.unpack s) $ do
 
     convert x = (\(a, b) -> (a, Text.pack b)) <$> x
 
--- | The type we wish to convert event logs into
 data EventLogProfile = EventLogProfile
-    { prog_name :: Maybe Text
-    , rts_version :: Maybe (Version, Text)
-    , prof_interval :: Maybe Word64
-    , info_prov_oracle :: InfoProvOracle
-    -- ^ Table of present 'InfoProv's in the eventlog
-    , user_cost_centres :: !(Map UserCostCentre (CostCentreId, UserCostCentre))
-    -- ^ All "cost centres" that are actually mentioned by `ghc-stack-profiler`.
-    , cost_centre_counter :: !CostCentreId
-    -- ^ Unique Counter for the 'Sample's
-    , el_samples :: [Sample]
-    -- ^ All samples in the reverse order of finding them in the eventlog.
-    , hydration_table :: !IntMapTable
-    -- ^ The symbol table storing 'Text' and 'SourceLocation' symbols
-    -- for hydrating a 'BinaryCallStackMessage' into a 'CallStackMessage'.
-    , current_callstack_chunks :: [BinaryCallStackMessage]
-    -- ^ Chunks of 'BinaryCallStackMessage' we are currently decoding.
-    -- All chunks are assumed to be from the same callstack and will be decoded once a
-    -- 'CallStackFinal' message is encountered.
-    }
+  { profileProgName :: Text
+  , profileFrames :: [Frame]
+  , profileProfiles :: [Profile]
+  , profileProgVersionString :: Text
+  , profileProcessingErrors :: [[EventLogError]]
+  }
+
+-- | The type we wish to convert event logs into
+data EventLogProfileState = EventLogProfileState
+  { eventlog_prog_name :: Maybe Text
+  , rts_version :: Maybe (Version, Text)
+  , prof_interval :: Maybe Word64
+  , info_prov_oracle :: InfoProvOracle
+  -- ^ Table of present 'InfoProv's in the eventlog
+  , user_cost_centres :: !(Map UserCostCentre (CostCentreId, UserCostCentre))
+  -- ^ All "cost centres" that are actually mentioned by `ghc-stack-profiler`.
+  , cost_centre_counter :: !CostCentreId
+  -- ^ Unique Counter for the 'Sample's
+  , el_samples :: [Sample]
+  -- ^ All samples in the reverse order of finding them in the eventlog.
+  , hydration_table :: !IntMapTable
+  -- ^ The symbol table storing 'Text' and 'SourceLocation' symbols
+  -- for hydrating a 'BinaryCallStackMessage' into a 'CallStackMessage'.
+  , current_callstack_chunks :: [BinaryCallStackMessage]
+  -- ^ Chunks of 'BinaryCallStackMessage' we are currently decoding.
+  -- All chunks are assumed to be from the same callstack and will be decoded once a
+  -- 'CallStackFinal' message is encountered.
+  , decoding_errors :: [[EventLogError]]
+  }
+
+addDecodingErrorsForStack :: [EventLogError] -> EventLogProfileState -> EventLogProfileState
+addDecodingErrorsForStack errs elProf =
+  if null errs
+    then
+      elProf
+    else
+      elProf
+        { decoding_errors = errs : decoding_errors elProf
+        }
+
+-- ----------------------------------------------------------------------------
+-- Decoding errors
+-- ----------------------------------------------------------------------------
+
+data EventLogError
+  = UnknownIpeId IpeId
+  | UnknownStringId StringId
+  | UnknownSrcLocId SourceLocationId
+  | SourceLocationPartUndefined SourceLocationId StringId
+  deriving (Show, Eq, Ord)
+
+fromBinaryError :: BinaryCallStackDecodeError -> EventLogError
+fromBinaryError = \ case
+  StringIdNotFound sid -> UnknownStringId sid
+  SourceLocationIdNotFound sid -> UnknownSrcLocId sid
+
+fromMissingKeyError :: MissingKeyError -> EventLogError
+fromMissingKeyError = \ case
+  KeyStringIdNotFound sourceLocId stringId -> SourceLocationPartUndefined sourceLocId stringId
+
+prettyEventLogError :: EventLogError -> String
+prettyEventLogError = \ case
+  UnknownIpeId ipeId -> show $ UnknownIpeId ipeId
+  UnknownStringId sid -> show $ UnknownStringId sid
+  UnknownSrcLocId sid -> show $ UnknownSrcLocId sid
+  SourceLocationPartUndefined srcLocId stringId ->
+    "While decoding source location " ++ show srcLocId ++ ", failed to find string " ++ show stringId
 
 -- ----------------------------------------------------------------------------
 -- Oracle for Info Provs
 -- ----------------------------------------------------------------------------
 
 newtype InfoProvOracle = InfoProvOracle
-  { findInfoProv :: IpeId -> InfoProv
+  { findInfoProv :: IpeId -> Maybe InfoProv
   }
 
 oracleFromMap :: IntMap InfoProv -> InfoProvOracle
-oracleFromMap infoProvs = InfoProvOracle (\ipeId -> infoProvs IntMap.! idToInt ipeId)
+oracleFromMap infoProvs = InfoProvOracle (\ipeId -> IntMap.lookup (idToInt ipeId) infoProvs)
 
 oracleFromInfoProvDb :: IpeDb.InfoProvDb -> InfoProvOracle
-oracleFromInfoProvDb infoProvDb = InfoProvOracle (\ipeId -> case Unsafe.unsafePerformIO (IpeDb.lookupInfoProv infoProvDb (IpeDb.IpeId (getIpeId ipeId))) of
-  Nothing -> error $ "Failed to find info prov with id: " ++ show ipeId
-  Just ipedb_info_prov -> toSpeedscopeInfoProv ipedb_info_prov
-  )
+oracleFromInfoProvDb infoProvDb = InfoProvOracle $ \ipeId -> do
+  ipedb_info_prov <- Unsafe.unsafePerformIO (IpeDb.lookupInfoProv infoProvDb (IpeDb.IpeId (getIpeId ipeId)))
+  pure $ toSpeedscopeInfoProv ipedb_info_prov
 
 -- ----------------------------------------------------------------------------
 -- In-memory Info Prov DB
