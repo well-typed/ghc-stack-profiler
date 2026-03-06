@@ -8,6 +8,7 @@ module GHC.Stack.Profiler.Core.SymbolTable (
   emptyMapSymbolTableWriter,
   -- * An 'IntMap' implementation for the 'SymbolTableReader' interface.
   IntMapTable,
+  MissingKeyError(..),
   mkIntMapSymbolTableReader,
   emptyIntMapTable,
   insertSourceLocationMessage,
@@ -15,7 +16,6 @@ module GHC.Stack.Profiler.Core.SymbolTable (
 ) where
 
 import Data.Text (Text)
-import Data.Word (Word64)
 import Data.IntMap.Strict (IntMap)
 import qualified Data.IntMap.Strict as IntMap
 import Data.Map.Strict (Map)
@@ -25,7 +25,6 @@ import GHC.Generics (Generic)
 import GHC.Stack.Profiler.Core.Eventlog
 import GHC.Stack.Profiler.Core.SourceLocation
 import GHC.Stack.Profiler.Core.Util
-import GHC.Stack (HasCallStack)
 
 -- ----------------------------------------------------------------------------
 -- Abstract interfaces for writing and reading to the symbol tables for deduplicating
@@ -35,7 +34,7 @@ import GHC.Stack (HasCallStack)
 -- | Implementation agnostic symbol table supposed to be used to deduplicate symbols
 -- in 'CallStackMessage'.
 --
--- When transforming 'CallStackMessage' to '[BinaryEventlogMessage]' we replace some
+-- When transforming 'CallStackMessage' to ['BinaryEventlogMessage'] we replace some
 -- symbols with identifiers.
 -- In particular arbitrary length symbols, such as 'Text's and 'SourceLocation's.
 -- As these symbols are discovered while encoding the callstack, the 'SymbolTableWriter'
@@ -65,10 +64,10 @@ data SymbolTableWriter tbl =
 -- doesn't need to thread the implementation through the lookup operations.
 data SymbolTableReader =
   MkSymbolTableReader
-    { lookupStringId :: StringId -> Text
+    { lookupStringId :: StringId -> Maybe Text
     -- ^ Lookup the 'StringId' in the symbol table.
     -- This operation throws an exception if the 'StringId' is unknown.
-    , lookupSourceLocationId :: SourceLocationId -> SourceLocation
+    , lookupSourceLocationId :: SourceLocationId -> Maybe SourceLocation
     -- ^ Lookup the 'SourceLocationId' in the symbol table.
     -- This operation throws an exception if the 'SourceLocationId' is unknown.
     }
@@ -81,7 +80,8 @@ data SymbolTableReader =
 data MapTable = MkMapTable
   { stringTable :: !(Map Text StringId)
   , srcLocTable :: !(Map SourceLocation SourceLocationId)
-  , uniqueSupply :: !Word64
+  , stringUniqueSupply :: {-# UNPACK #-} !StringId
+  , srcLocUniqueSupply :: {-# UNPACK #-} !SourceLocationId
   } deriving (Show, Eq, Ord, Generic)
 
 {-# INLINABLE emptyMapSymbolTableWriter #-}
@@ -91,19 +91,33 @@ emptyMapSymbolTableWriter = MkSymbolTableWriter
       MkMapTable
         { stringTable = Map.empty
         , srcLocTable = Map.empty
-        , uniqueSupply = 0
+        , stringUniqueSupply = MkStringId 0
+        , srcLocUniqueSupply = MkSourceLocationId 0
         }
   , lookupOrInsertText = alterStringMap
   , lookupOrInsertSourceLocation = alterSrcLocTable
   }
 
   where
-    nextUnique tbl = (uniqueSupply tbl, tbl { uniqueSupply = uniqueSupply tbl + 1 })
+    nextSrcLocUnique tbl =
+      ( srcLocUniqueSupply tbl
+      , tbl
+        { srcLocUniqueSupply =
+            incrementSourceLocationId $ srcLocUniqueSupply tbl
+        }
+      )
 
-    updateEntry tbl0 mkKey Nothing =
+    nextStringUnique tbl =
+      ( stringUniqueSupply tbl
+      , tbl
+        { stringUniqueSupply =
+            incrementStringLocationId $ stringUniqueSupply tbl
+        }
+      )
+
+    updateEntry tbl0 nextKey Nothing =
       let
-        (uniq, tbl) = nextUnique tbl0
-        sid = mkKey uniq
+        (sid, tbl) = nextKey tbl0
       in
         ((sid, True, tbl), Just sid)
 
@@ -115,21 +129,31 @@ emptyMapSymbolTableWriter = MkSymbolTableWriter
 
     alterStringMap = \ tbl str ->
       swapAround setStringTable $
-        Map.alterF (updateEntry tbl MkStringId) str (stringTable tbl)
+        Map.alterF (updateEntry tbl nextStringUnique) str (stringTable tbl)
 
     alterSrcLocTable = \ tbl srcLoc ->
       swapAround setSourceLocationTable $
-        Map.alterF (updateEntry tbl MkSourceLocationId) srcLoc (srcLocTable tbl)
+        Map.alterF (updateEntry tbl nextSrcLocUnique) srcLoc (srcLocTable tbl)
 
 setSourceLocationTable :: MapTable -> Map SourceLocation SourceLocationId -> MapTable
-setSourceLocationTable tbl hm = tbl { srcLocTable = hm }
+setSourceLocationTable tbl hm =
+  tbl
+    { srcLocTable = hm
+    }
 
 setStringTable :: MapTable -> Map Text StringId -> MapTable
-setStringTable tbl hm = tbl { stringTable = hm }
+setStringTable tbl hm =
+  tbl
+    { stringTable = hm
+    }
 
 -- ----------------------------------------------------------------------------
 -- Implementation backend for 'SymbolTableReader'
 -- ----------------------------------------------------------------------------
+
+data MissingKeyError
+  = KeyStringIdNotFound SourceLocationId StringId
+  -- ^ We failed to find the 'StringId' to fully decode the 'SourceLocationId'.
 
 data IntMapTable = MkIntMapTable
   { stringLookupTable :: !(IntMap Text)
@@ -161,33 +185,37 @@ insertTextMessage msg tbl =
     }
 
 {-# INLINABLE insertSourceLocationMessage #-}
-insertSourceLocationMessage :: BinarySourceLocationMessage -> IntMapTable -> IntMapTable
-insertSourceLocationMessage msg tbl =
-  tbl
+insertSourceLocationMessage :: BinarySourceLocationMessage -> IntMapTable -> Either MissingKeyError IntMapTable
+insertSourceLocationMessage msg tbl = do
+  let
+    srcLocId = binarySourceLocationMessageId msg
+    funcId = binarySourceLocationFunctionId msg
+    fileId = binarySourceLocationFilename msg
+
+  funcName <-
+    maybe (Left $ KeyStringIdNotFound srcLocId funcId) Right $ lookupTextMessage funcId tbl
+  fileName <-
+    maybe (Left $ KeyStringIdNotFound srcLocId fileId) Right $ lookupTextMessage fileId tbl
+
+  pure tbl
     { srcLocLookupTable =
         IntMap.insert
-          (idToInt $ binarySourceLocationMessageId msg)
-          sourceLocation
+          (idToInt srcLocId)
+          (mkSourceLocation funcName fileName)
           (srcLocLookupTable tbl)
     }
   where
-    sourceLocation = MkSourceLocation
+    mkSourceLocation funcName fileName = MkSourceLocation
       { line = binarySourceLocationRow msg
       , column = binarySourceLocationColumn msg
-      , functionName = lookupTextMessage (binarySourceLocationFunctionId msg) tbl
-      , fileName = lookupTextMessage (binarySourceLocationFilename msg) tbl
+      , functionName = funcName
+      , fileName = fileName
       }
 
 {-# INLINABLE lookupTextMessage #-}
-lookupTextMessage :: StringId -> IntMapTable -> Text
-lookupTextMessage sid tbl = stringLookupTable tbl `unsafeIntMapLookup` idToInt sid
+lookupTextMessage :: StringId -> IntMapTable -> Maybe Text
+lookupTextMessage sid tbl = IntMap.lookup (idToInt sid) (stringLookupTable tbl)
 
 {-# INLINABLE lookupSourceLocationMessage #-}
-lookupSourceLocationMessage :: SourceLocationId -> IntMapTable -> SourceLocation
-lookupSourceLocationMessage sid tbl = srcLocLookupTable tbl `unsafeIntMapLookup` idToInt sid
-
-unsafeIntMapLookup :: HasCallStack => IntMap a -> Int -> a
-unsafeIntMapLookup tbl k = case IntMap.lookup k tbl of
-  Just v -> v
-  Nothing ->
-    error $ "Failed to find key: " ++ showAsHex k
+lookupSourceLocationMessage :: SourceLocationId -> IntMapTable -> Maybe  SourceLocation
+lookupSourceLocationMessage sid tbl = IntMap.lookup (idToInt sid) (srcLocLookupTable tbl)
