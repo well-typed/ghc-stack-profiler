@@ -1,4 +1,27 @@
-module GHC.Stack.Profiler.Core.Eventlog where
+module GHC.Stack.Profiler.Core.Eventlog (
+  -- * Eventlgog Message types
+  BinaryEventlogMessage(..),
+  BinaryCallStackMessage(..),
+  BinaryStringMessage(..),
+  BinarySourceLocationMessage(..),
+  BinaryStackItem(..),
+  CapabilityId(..),
+  StringId(..),
+  incrementStringLocationId,
+  SourceLocationId(..),
+  incrementSourceLocationId,
+  IpeId(..),
+
+  -- * Eventlog constants
+  callStackFinalMessageTag,
+  callStackPartialMessageTag,
+  callStackStringMessageTag,
+  callStackSourceLocationMessageTag,
+  callStackMessageTags,
+  callStackItemLimit,
+  eventlogBufferSize,
+  stringLengthLimit,
+) where
 
 import Control.Monad (replicateM)
 import Data.Binary
@@ -85,10 +108,16 @@ newtype StringId = MkStringId
   }
   deriving (Eq, Ord, Show, Generic)
 
+incrementStringLocationId :: StringId -> StringId
+incrementStringLocationId (MkStringId sid) = MkStringId (sid + 1)
+
 newtype SourceLocationId = MkSourceLocationId
   { getSourceLocationId :: Word64
   }
   deriving (Eq, Ord, Show, Generic)
+
+incrementSourceLocationId :: SourceLocationId -> SourceLocationId
+incrementSourceLocationId (MkSourceLocationId slId) = MkSourceLocationId (slId + 1)
 
 newtype IpeId = MkIpeId
   { getIpeId :: Word64

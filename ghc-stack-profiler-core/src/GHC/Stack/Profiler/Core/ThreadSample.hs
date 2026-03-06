@@ -11,6 +11,7 @@ module GHC.Stack.Profiler.Core.ThreadSample (
   SymbolTableWriter(..),
   SymbolTableReader(..),
   dehydrateCallStackMessage,
+  BinaryCallStackDecodeError(..),
   hydrateEventlogCallStackMessage,
   catCallStackMessage,
   chunkCallStackMessage,
@@ -34,6 +35,7 @@ import GHC.Stack.Profiler.Core.Eventlog
 import GHC.Stack.Profiler.Core.Util
 import GHC.Stack.Profiler.Core.SourceLocation
 import GHC.Stack.Profiler.Core.SymbolTable
+import Data.Either (partitionEithers)
 
 -- ----------------------------------------------------------------------------
 -- Thread Sample
@@ -141,23 +143,42 @@ dehydrateCallStackMessage msgTbl0 msg =
       SourceLocation srcLoc ->
         BinarySourceLocation <$> lookupSourceLocationMessage srcLoc
 
+data BinaryCallStackDecodeError
+  = StringIdNotFound StringId
+  | SourceLocationIdNotFound SourceLocationId
+
 -- | Generic implementation to turn 'BinaryCallStackMessage' into the much richer
 -- 'CallStackMessage'.
-hydrateEventlogCallStackMessage :: SymbolTableReader -> BinaryCallStackMessage -> CallStackMessage
+hydrateEventlogCallStackMessage :: SymbolTableReader -> BinaryCallStackMessage -> (CallStackMessage, [BinaryCallStackDecodeError])
 hydrateEventlogCallStackMessage decodeTable msg =
   let
+    decodeItem :: BinaryStackItem -> Either BinaryCallStackDecodeError StackItem
     decodeItem = \ case
-      BinaryIpe ipeId -> IpeId ipeId
-      BinaryString stringId -> UserMessage $ Text.unpack $ lookupStringId decodeTable stringId
-      BinarySourceLocation srcLocId -> SourceLocation $ lookupSourceLocationId decodeTable srcLocId
+      BinaryIpe ipeId ->
+        Right $ IpeId ipeId
 
-    items = map decodeItem (binaryCallStack msg)
+      BinaryString stringId ->
+        maybe
+          (Left $ StringIdNotFound stringId)
+          (Right . UserMessage . Text.unpack)
+          (lookupStringId decodeTable stringId)
+      BinarySourceLocation srcLocId ->
+        maybe
+          (Left $ SourceLocationIdNotFound srcLocId)
+          (Right . SourceLocation)
+          (lookupSourceLocationId decodeTable srcLocId)
+
+    itemsOrErros = map decodeItem (binaryCallStack msg)
+    (errors, items) = partitionEithers itemsOrErros
+
   in
-    MkCallStackMessage
+    ( MkCallStackMessage
       { callCapabilityId = binaryCallCapabilityId msg
       , callThreadId = binaryCallThreadId msg
       , callStack = items
       }
+    , errors
+    )
 
 -- | Combine all 'BinaryCallStackMessage's into a single 'BinaryCallStackMessage'.
 -- We assume that all 'BinaryCallStackMessage' only differ in their 'binaryCallStack' values.
