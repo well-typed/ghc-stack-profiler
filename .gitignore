@@ -5,3 +5,10 @@ cabal.project.local
 *.eventlog.html
 *.hp
 sdist/
+
+# editor specific
+.vscode/
+.zed/
+
+# direnv
+.envrc
