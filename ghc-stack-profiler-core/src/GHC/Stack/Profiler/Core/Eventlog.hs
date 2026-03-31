@@ -1,16 +1,16 @@
 module GHC.Stack.Profiler.Core.Eventlog (
   -- * Eventlgog Message types
-  BinaryEventlogMessage(..),
-  BinaryCallStackMessage(..),
-  BinaryStringMessage(..),
-  BinarySourceLocationMessage(..),
-  BinaryStackItem(..),
-  CapabilityId(..),
-  StringId(..),
+  BinaryEventlogMessage (..),
+  BinaryCallStackMessage (..),
+  BinaryStringMessage (..),
+  BinarySourceLocationMessage (..),
+  BinaryStackItem (..),
+  CapabilityId (..),
+  StringId (..),
   incrementStringLocationId,
-  SourceLocationId(..),
+  SourceLocationId (..),
   incrementSourceLocationId,
-  IpeId(..),
+  IpeId (..),
 
   -- * Eventlog constants
   callStackFinalMessageTag,
@@ -60,7 +60,6 @@ import GHC.Stack.Profiler.Core.Util
 --   := <length: Int16> <Char>+
 --    # check that length < 2^16-8
 -- @
---
 data BinaryEventlogMessage
   = CallStackFinal !BinaryCallStackMessage
   | CallStackChunk !BinaryCallStackMessage
@@ -97,10 +96,10 @@ data BinaryStackItem
   deriving (Eq, Ord, Show, Generic)
 
 -- | Simple newtype for the ID of a capability.
-newtype CapabilityId =
-  MkCapabilityId
-    { getCapabilityId :: Word64
-    }
+newtype CapabilityId
+  = MkCapabilityId
+  { getCapabilityId :: Word64
+  }
   deriving (Show, Eq, Ord, Generic)
 
 newtype StringId = MkStringId
@@ -154,24 +153,26 @@ eventlogBufferSize = (2 :: Word64) ^ (16 :: Word64)
 
 -- | Size limit of strings that can occur in the eventlog.
 stringLengthLimit :: Word16
-stringLengthLimit = word64ToWord16 $
+stringLengthLimit =
+  word64ToWord16 $
     eventlogBufferSize
       - 2 {- 0xFFCC -}
       - 8 {- Word64 of 'StringId' -}
       - 2 {- Word16 for the length of the string to serialise -}
 
 callStackItemLimit :: Word16
-callStackItemLimit = word64ToWord16
+callStackItemLimit =
+  word64ToWord16
     ( eventlogBufferSize
-      - 2 {- 0xFFCA or 0xFFCB -}
-      - 4 {- Word32 of 'CapabilityId' -}
-      - 4 {- Word32 of 'ThreadId' -}
-      - 2 {- Word16 for the length of stack entry -}
+        - 2 {- 0xFFCA or 0xFFCB -}
+        - 4 {- Word32 of 'CapabilityId' -}
+        - 4 {- Word32 of 'ThreadId' -}
+        - 2 {- Word16 for the length of stack entry -}
     )
     `div` 9 {- Each 'BinaryStackItem' has at most 9 bytes -}
 
 instance Binary BinaryEventlogMessage where
-  put = \ case
+  put = \case
     CallStackFinal msg ->
       putWithTag callStackFinalMessageTag msg
     CallStackChunk msg ->
@@ -180,8 +181,8 @@ instance Binary BinaryEventlogMessage where
       putWithTag callStackStringMessageTag msg
     SourceLocationDef msg ->
       putWithTag callStackSourceLocationMessageTag msg
-    where
-      putWithTag t msg = putWord16 t >> put msg
+   where
+    putWithTag t msg = putWord16 t >> put msg
 
   get = do
     tag <- getWord16
@@ -196,16 +197,20 @@ instance Binary BinaryEventlogMessage where
         | tag == callStackSourceLocationMessageTag ->
             SourceLocationDef <$> get
         | otherwise ->
-            fail $ "BinaryEventlogMessage.get: Unknown tag expected one of " ++ tags
-              ++ " but got " ++ showAsHex tag
-    where
-      tags = List.intercalate ", " $ map showAsHex callStackMessageTags
+            fail $
+              "BinaryEventlogMessage.get: Unknown tag expected one of "
+                ++ tags
+                ++ " but got "
+                ++ showAsHex tag
+   where
+    tags = List.intercalate ", " $ map showAsHex callStackMessageTags
 
 instance Binary BinaryCallStackMessage where
   put msg = do
     putWord32 $ word64ToWord32 $ getCapabilityId $ binaryCallCapabilityId msg
     putWord32 $ word64ToWord32 $ binaryCallThreadId msg
-    let items = binaryCallStack msg
+    let
+      items = binaryCallStack msg
     putWord16 $ intToWord16 $ length items
     mapM_ put items
 
@@ -214,14 +219,15 @@ instance Binary BinaryCallStackMessage where
     tid <- getWord32
     len <- getWord16
     items <- replicateM (word16ToInt len) get
-    pure MkBinaryCallStackMessage
-      { binaryCallThreadId = word32ToWord64 tid
-      , binaryCallCapabilityId = MkCapabilityId $ word32ToWord64 capId
-      , binaryCallStack = items
-      }
+    pure
+      MkBinaryCallStackMessage
+        { binaryCallThreadId = word32ToWord64 tid
+        , binaryCallCapabilityId = MkCapabilityId $ word32ToWord64 capId
+        , binaryCallStack = items
+        }
 
 instance Binary BinaryStackItem where
-  put = \ case
+  put = \case
     BinaryIpe ipeId -> do
       putWord8 1
       put ipeId
@@ -233,7 +239,7 @@ instance Binary BinaryStackItem where
       put lid
 
   get = do
-    getWord8 >>= \ case
+    getWord8 >>= \case
       1 -> BinaryIpe <$> get
       2 -> BinaryString <$> get
       3 -> BinarySourceLocation <$> get

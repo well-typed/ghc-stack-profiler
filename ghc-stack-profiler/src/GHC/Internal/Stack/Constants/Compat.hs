@@ -1,6 +1,7 @@
 {-# LANGUAGE CPP #-}
+
 module GHC.Internal.Stack.Constants.Compat (
-  WordOffset(..),
+  WordOffset (..),
   offsetStgAnnFrameAnn,
 ) where
 
@@ -16,4 +17,3 @@ import GHC.Exts.Stack.Constants
 offsetStgAnnFrameAnn :: WordOffset
 offsetStgAnnFrameAnn = error "offsetStgAnnFrameAnn is only available in GHC >=9.14"
 #endif
-

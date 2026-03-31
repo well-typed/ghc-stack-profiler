@@ -1,4 +1,5 @@
 {-# LANGUAGE CPP #-}
+
 module GHC.Stack.Profiler.Stack.Compat (
   lookupIpeIdForStackFrame,
 ) where
@@ -22,5 +23,5 @@ lookupIpeIdForStackFrame itbl = do
   -- So, to check whether there is an InfoProv, we first lookup by the 'StgInfoTable' ptr,
   -- i.e. not adjusting for 'TABLES_NEXT_TO_CODE', but if there is an entry, we use the
   -- the struct address, otherwise the decoder will not be able to find the 'InfoProv'.
-  pure $ castPtrToWord64 (infoTableStructPtr itbl) <$ mId
+  pure $! castPtrToWord64 (infoTableStructPtr itbl) <$ mId
 #endif

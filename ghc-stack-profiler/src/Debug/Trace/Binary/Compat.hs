@@ -1,12 +1,14 @@
-{-# LANGUAGE CPP           #-}
-{-# LANGUAGE MagicHash     #-}
+{-# LANGUAGE CPP #-}
+{-# LANGUAGE MagicHash #-}
 {-# LANGUAGE UnboxedTuples #-}
+
 module Debug.Trace.Binary.Compat (
   -- * For tracing user binary events
   traceBinaryEventIO,
+
   -- * Flag to check whether the eventlog is enabled
-  userTracingEnabled,
-  ) where
+  userTracingEnabledIO,
+) where
 
 #if defined(USE_GHC_TRACE_EVENTS)
 import Debug.Trace.Binary (traceBinaryEventIO)
@@ -18,7 +20,12 @@ import GHC.Types (IO(..))
 import GHC.Exts (Ptr(..), Int(..), traceBinaryEvent#)
 import GHC.Internal.RTS.Flags.Test (getUserEventTracingEnabled)
 import System.IO.Unsafe (unsafePerformIO)
+#endif
 
+#if defined(USE_GHC_TRACE_EVENTS)
+userTracingEnabledIO :: IO Bool
+userTracingEnabledIO = pure userTracingEnabled
+#else
 traceBinaryEventIO :: B.ByteString -> IO ()
 traceBinaryEventIO bytes = traceBinaryEventIO' bytes
 
@@ -28,6 +35,6 @@ traceBinaryEventIO' bytes =
     case traceBinaryEvent# p n s of
       s' -> (# s', () #)
 
-userTracingEnabled :: Bool
-userTracingEnabled = unsafePerformIO getUserEventTracingEnabled
+userTracingEnabledIO :: IO Bool
+userTracingEnabledIO = getUserEventTracingEnabled
 #endif

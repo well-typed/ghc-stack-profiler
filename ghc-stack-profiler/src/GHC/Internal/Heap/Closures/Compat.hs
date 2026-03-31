@@ -1,6 +1,7 @@
 {-# LANGUAGE CPP #-}
+
 module GHC.Internal.Heap.Closures.Compat (
-  Box(..),
+  Box (..),
 ) where
 
 #if MIN_VERSION_ghc_internal(9,1400,0)
