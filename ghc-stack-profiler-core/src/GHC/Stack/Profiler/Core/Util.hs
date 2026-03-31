@@ -2,24 +2,24 @@ module GHC.Stack.Profiler.Core.Util where
 
 import Control.Monad (replicateM)
 import Data.Binary
-import Data.Binary.Put
 import Data.Binary.Get
-import Data.Coerce (coerce, Coercible)
+import Data.Binary.Put
+import Data.Coerce (Coercible, coerce)
 import Data.Text (Text)
 import qualified Data.Text as Text
 import qualified Numeric
 
-idToInt :: Coercible a Word64 => a -> Int
+idToInt :: (Coercible a Word64) => a -> Int
 idToInt = word64ToInt . coerce
 
 putTextWord16 :: Word16 -> Text -> Put
 putTextWord16 bound msg =
   putWord16 len <> putStringUtf8 (Text.unpack msg)
-  where
-    shortName = Text.take (word16ToInt bound) msg
-    -- this is safe as 'bound' is a 'Word16' itself
-    -- so the short string can be at most have a length of 'Word16'
-    len = intToWord16 $ Text.length shortName
+ where
+  shortName = Text.take (word16ToInt bound) msg
+  -- this is safe as 'bound' is a 'Word16' itself
+  -- so the short string can be at most have a length of 'Word16'
+  len = intToWord16 $ Text.length shortName
 
 getTextWord16 :: Get Text
 getTextWord16 = do
@@ -27,7 +27,7 @@ getTextWord16 = do
   s <- replicateM (word16ToInt len) get
   pure $ Text.pack s
 
-showAsHex :: Integral a => a -> String
+showAsHex :: (Integral a) => a -> String
 showAsHex d = "0x" ++ Numeric.showHex d ""
 
 putWord64 :: Word64 -> Put

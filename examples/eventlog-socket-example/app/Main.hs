@@ -9,7 +9,7 @@ import System.Directory
 import System.IO.Temp
 
 main :: IO ()
-main = setupRootStackProfiler False $ \ manager -> withStackProfiler manager (SampleIntervalMs 10) $ do
+main = withRootStackProfiler False $ \ manager -> withStackProfiler manager (SampleIntervalMs 10) $ do
   mfp <- lookupEnv "EVENTLOG_SOCKET_EXAMPLE_SOCKET"
   fp <- maybe
     (do

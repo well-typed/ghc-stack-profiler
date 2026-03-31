@@ -1,30 +1,32 @@
+{-# LANGUAGE CPP #-}
+{-# LANGUAGE GHCForeignImportPrim #-}
 {-# LANGUAGE MagicHash #-}
 {-# LANGUAGE UnboxedTuples #-}
-{-# LANGUAGE GHCForeignImportPrim #-}
 {-# LANGUAGE UnliftedFFITypes #-}
-{-# LANGUAGE CPP #-}
+
 module GHC.Internal.Stack.Decode.Compat (
   StackFrameLocation,
   StackSnapshot#,
-  StackInfoTable(..),
+  StackInfoTable (..),
   getInfoTableForStack,
   getInfoTableOnStack,
   advanceStackFrameLocation,
   stackHead,
-  Box(..),
+  Box (..),
   getClosureBox,
 ) where
 
 import GHC.Exts
 import GHC.Stack.CloneStack (StackSnapshot (..))
+
 -- See Note [No way-dependent imports]
 #if defined(PROFILING)
 import GHC.Exts.Heap.InfoTableProf
 #else
 import GHC.Exts.Heap.InfoTable
 #endif
-import qualified GHC.Internal.InfoProv.Types as InfoProv
 import GHC.Internal.Heap.Closures.Compat
+import qualified GHC.Internal.InfoProv.Types as InfoProv
 import GHC.Internal.Stack.Constants.Compat (WordOffset)
 
 {-
@@ -52,16 +54,18 @@ data StackInfoTable = StackInfoTable
 -- Additionally, provides 'InfoProv' for the 'StgInfoTable' if there is any.
 getInfoTableOnStack :: StackSnapshot# -> WordOffset -> IO StackInfoTable
 getInfoTableOnStack stackSnapshot# index = do
-  let !(# itbl_struct#, itbl_ptr_ipe_key# #) = getInfoTableAddrs# stackSnapshot# (wordOffsetToWord# index)
-      itbl_struct = Ptr itbl_struct#
-      itbl_ptr = Ptr itbl_ptr_ipe_key#
+  let
+    !(# itbl_struct#, itbl_ptr_ipe_key# #) = getInfoTableAddrs# stackSnapshot# (wordOffsetToWord# index)
+    itbl_struct = Ptr itbl_struct#
+    itbl_ptr = Ptr itbl_ptr_ipe_key#
 
   itbl <- peekItbl itbl_struct
-  pure StackInfoTable
-    { infoTableStructPtr = itbl_struct
-    , infoTablePtr = itbl_ptr
-    , infoTable = itbl
-    }
+  pure
+    StackInfoTable
+      { infoTableStructPtr = itbl_struct
+      , infoTablePtr = itbl_ptr
+      , infoTable = itbl
+      }
 
 getInfoTableForStack :: StackSnapshot# -> IO StgInfoTable
 getInfoTableForStack stackSnapshot# =
@@ -71,13 +75,15 @@ getInfoTableForStack stackSnapshot# =
 -- | Advance to the next stack frame (if any)
 advanceStackFrameLocation :: StackFrameLocation -> Maybe StackFrameLocation
 advanceStackFrameLocation (StackSnapshot stackSnapshot#, index) =
-  let !(# s', i', hasNext #) = advanceStackFrameLocation# stackSnapshot# (wordOffsetToWord# index)
-   in if I# hasNext > 0
-        then Just (StackSnapshot s', primWordToWordOffset i')
-        else Nothing
-  where
-    primWordToWordOffset :: Word# -> WordOffset
-    primWordToWordOffset w# = fromIntegral (W# w#)
+  let
+    !(# s', i', hasNext #) = advanceStackFrameLocation# stackSnapshot# (wordOffsetToWord# index)
+  in
+    if I# hasNext > 0
+      then Just (StackSnapshot s', primWordToWordOffset i')
+      else Nothing
+ where
+  primWordToWordOffset :: Word# -> WordOffset
+  primWordToWordOffset w# = fromIntegral (W# w#)
 
 -- | `StackFrameLocation` of the top-most stack frame
 stackHead :: StackSnapshot# -> StackFrameLocation
@@ -104,7 +110,7 @@ foreign import prim "getStackInfoTableAddrzh"
   getStackInfoTableAddr# :: StackSnapshot# -> Addr#
 
 foreign import prim "getStackClosurezh"
-  getStackClosure# :: StackSnapshot# -> Word# ->  Any
+  getStackClosure# :: StackSnapshot# -> Word# -> Any
 
 -- ----------------------------------------------------------------------------
 -- Utilities that really should live somewhere else

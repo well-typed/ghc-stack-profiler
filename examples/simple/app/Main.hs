@@ -5,7 +5,7 @@ import GHC.Stack.Annotation
 import GHC.Stack.Profiler
 
 main :: IO ()
-main = setupRootStackProfiler True $ \ manager -> withStackProfiler manager (SampleIntervalMs 10) $ do
+main = withRootStackProfiler True $ \ manager -> withStackProfiler manager (SampleIntervalMs 10) $ do
   print $ annotateStackString "fib 41" $ fib 41
   print $ annotateStackString "fib 42" $ fib 42
   print $ annotateStackString "fib 43" $ fib 43

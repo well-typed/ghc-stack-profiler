@@ -1,9 +1,10 @@
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE GADTs #-}
+
 module GHC.Stack.Annotation.Experimental.Compat (
-  SomeStackAnnotation(..),
-  CallStackAnnotation(..),
-  StringAnnotation(..),
+  SomeStackAnnotation (..),
+  CallStackAnnotation (..),
+  StringAnnotation (..),
 ) where
 
 #if MIN_VERSION_ghc_internal(9,1400,0)
