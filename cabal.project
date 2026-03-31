@@ -8,7 +8,7 @@ optional-packages:
   examples/simple-scope/
 
 if !os(windows)
-  optional-package:
+  optional-packages:
     examples/eventlog-socket-example/
 
   -- In this project, we always build with '+control' on non-windows
