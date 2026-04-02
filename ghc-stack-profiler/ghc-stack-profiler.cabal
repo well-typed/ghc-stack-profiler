@@ -109,6 +109,7 @@ library
     GHC.Stack.Profiler.Manager
     GHC.Stack.Profiler.Stack.Compat
     GHC.Stack.Profiler.Stack.Decode
+    GHC.Stack.Profiler.SymbolTable
     GHC.Stack.Profiler.Util
 
   build-depends:
