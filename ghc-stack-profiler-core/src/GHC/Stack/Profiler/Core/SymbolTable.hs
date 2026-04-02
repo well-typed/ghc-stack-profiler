@@ -32,6 +32,7 @@ import qualified Data.Tuple as Tuple
 import GHC.Stack.Profiler.Core.Eventlog
 import GHC.Stack.Profiler.Core.SourceLocation
 import GHC.Stack.Profiler.Core.Util
+import Control.Exception (Exception)
 
 -- ----------------------------------------------------------------------------
 -- Abstract interfaces for writing and reading to the symbol tables for deduplicating
@@ -169,6 +170,9 @@ getKnownSourceLocations table =
 data MissingKeyError
   = -- | We failed to find the 'StringId' to fully decode the 'SourceLocationId'.
     KeyStringIdNotFound SourceLocationId StringId
+  deriving (Show)
+
+instance Exception MissingKeyError
 
 data IntMapTable = MkIntMapTable
   { stringLookupTable :: !(IntMap Text)
