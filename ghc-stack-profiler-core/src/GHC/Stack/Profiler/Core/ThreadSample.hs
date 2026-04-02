@@ -46,6 +46,7 @@ import GHC.Stack.Profiler.Core.Eventlog
 import GHC.Stack.Profiler.Core.SourceLocation
 import GHC.Stack.Profiler.Core.SymbolTable
 import GHC.Stack.Profiler.Core.Util
+import Control.Exception (Exception)
 
 -- ----------------------------------------------------------------------------
 -- Thread Sample
@@ -149,6 +150,9 @@ dehydrateCallStackMessage msgTbl0 msg =
 data BinaryCallStackDecodeError
   = StringIdNotFound StringId
   | SourceLocationIdNotFound SourceLocationId
+  deriving (Show)
+
+instance Exception BinaryCallStackDecodeError
 
 -- | Generic implementation to turn 'BinaryCallStackMessage' into the much richer
 -- 'CallStackMessage'.
