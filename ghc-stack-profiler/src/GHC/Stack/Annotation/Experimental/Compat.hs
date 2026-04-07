@@ -11,13 +11,13 @@ module GHC.Stack.Annotation.Experimental.Compat (
 import GHC.Stack.Annotation.Experimental
 #else
 import Data.Typeable
-import GHC.Stack.Types (CallStack)
+import GHC.Stack.Types (CallStack, SrcLoc)
 
 data SomeStackAnnotation where
   SomeStackAnnotation :: forall a. (Typeable a) => a -> SomeStackAnnotation
 
 data StringAnnotation where
-  StringAnnotation :: String -> StringAnnotation
+  StringAnnotation :: !(Maybe SrcLoc) -> String -> StringAnnotation
 
 newtype CallStackAnnotation = CallStackAnnotation CallStack
 #endif

@@ -76,7 +76,7 @@ stackAnnotationToStackItem = \case
                   , fileName = Text.pack $ srcLocFile sourceLoc
                   }
       Nothing -> case cast ann of
-        Just (StringAnnotation msg) ->
+        Just (StringAnnotation _ msg) ->
           Just $ UserMessage msg
         Nothing ->
           Nothing
