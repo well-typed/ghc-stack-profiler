@@ -24,9 +24,3 @@ if impl(ghc >=9.14)
     template-haskell,
     ghc-bignum,
     containers,
-
-source-repository-package
-    type: git
-    location: https://github.com/well-typed/eventlog-socket
-    tag: 539f89c9a1371112e2d56524f73f223d1ffa0040
-    subdir: eventlog-socket

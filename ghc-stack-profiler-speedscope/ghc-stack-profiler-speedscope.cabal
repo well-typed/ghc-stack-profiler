@@ -1,6 +1,6 @@
 cabal-version: 3.8
 name: ghc-stack-profiler-speedscope
-version: 0.1.0.0
+version: 0.2.0.0
 license: BSD-3-Clause
 author: Hannes Siebenhandl, Wen Kokke, Matthew Pickering
 maintainer: hannes@well-typed.com
@@ -55,7 +55,7 @@ library
     containers >=0.6.8 && <0.9,
     extra ^>=1.8.1,
     ghc-events ^>=0.20,
-    ghc-stack-profiler-core ^>=0.1,
+    ghc-stack-profiler-core ==0.2.0.0,
     hs-speedscope ^>=0.3,
     ipedb ^>=0.1.0.0,
     machines ^>=0.7.4,

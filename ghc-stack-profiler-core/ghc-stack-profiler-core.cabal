@@ -1,6 +1,6 @@
 cabal-version: 3.8
 name: ghc-stack-profiler-core
-version: 0.1.0.0
+version: 0.2.0.0
 license: BSD-3-Clause
 author: Hannes Siebenhandl, Wen Kokke, Matthew Pickering
 maintainer: hannes@well-typed.com
