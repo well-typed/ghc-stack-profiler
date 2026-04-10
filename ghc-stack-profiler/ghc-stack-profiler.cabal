@@ -141,8 +141,10 @@ library
     build-depends:
       ghc-prim
 
-  -- Custom stack decoding for GHC <9.14
-  if impl(ghc <9.14)
+  -- Custom stack decoding for GHC <9.14.2
+  -- Fixes https://github.com/well-typed/ghc-stack-profiler/issues/14
+  -- See https://gitlab.haskell.org/ghc/ghc/-/issues/27009 for the fix.
+  if impl(ghc <9.14.2)
     cmm-sources:
       cbits/Stack.cmm
 
