@@ -1,6 +1,7 @@
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE GHCForeignImportPrim #-}
 {-# LANGUAGE MagicHash #-}
+{-# LANGUAGE UnboxedSums #-}
 {-# LANGUAGE UnboxedTuples #-}
 {-# LANGUAGE UnliftedFFITypes #-}
 
@@ -74,13 +75,12 @@ getInfoTableForStack stackSnapshot# =
 
 -- | Advance to the next stack frame (if any)
 advanceStackFrameLocation :: StackFrameLocation -> Maybe StackFrameLocation
-advanceStackFrameLocation (StackSnapshot stackSnapshot#, index) =
-  let
-    !(# s', i', hasNext #) = advanceStackFrameLocation# stackSnapshot# (wordOffsetToWord# index)
-  in
-    if I# hasNext > 0
-      then Just (StackSnapshot s', primWordToWordOffset i')
-      else Nothing
+advanceStackFrameLocation ((StackSnapshot stackSnapshot#), index) =
+  case advanceStackFrameLocation# stackSnapshot# (wordOffsetToWord# index) of
+    (# (# #) | #) ->
+      Nothing
+    (# | (# s', i' #) #) ->
+      Just (StackSnapshot s', primWordToWordOffset i')
  where
   primWordToWordOffset :: Word# -> WordOffset
   primWordToWordOffset w# = fromIntegral (W# w#)
@@ -101,7 +101,7 @@ getClosureBox stackSnapshot# index =
 -- The last `Int#` in the result tuple is meant to be treated as bool
 -- (has_next).
 foreign import prim "advanceStackFrameLocationzh"
-  advanceStackFrameLocation# :: StackSnapshot# -> Word# -> (# StackSnapshot#, Word#, Int# #)
+  advanceStackFrameLocation# :: StackSnapshot# -> Word# -> (# (# #) | (# StackSnapshot#, Word# #) #)
 
 foreign import prim "getInfoTableAddrszh"
   getInfoTableAddrs# :: StackSnapshot# -> Word# -> (# Addr#, Addr# #)
