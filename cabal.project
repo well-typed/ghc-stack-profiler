@@ -9,14 +9,19 @@ optional-packages:
 
 if !os(windows)
   optional-packages:
-    examples/eventlog-socket-example/
+    examples/eventlog-socket-fibber/
+    examples/eventlog-socket-jumpy-jump/
+    examples/eventlog-socket-oddball/
 
   -- In this project, we always build with '+control' on non-windows
   package ghc-stack-profiler
     flags: +control
 
   package eventlog-socket
-    flags: +control
+    flags: +control +debug
+
+  package eventlog-socket-tests
+    flags: +control +debug
 
 if impl(ghc >=9.14)
   allow-newer:
@@ -24,3 +29,9 @@ if impl(ghc >=9.14)
     template-haskell,
     ghc-bignum,
     containers,
+
+source-repository-package
+    type: git
+    location: https://github.com/well-typed/eventlog-socket.git
+    tag: ea20651a3f04dc6524c295fbd5fb11b43d59cd6e
+    subdir: eventlog-socket-tests
