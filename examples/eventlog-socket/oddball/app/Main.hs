@@ -14,7 +14,7 @@ import GHC.Stack.Profiler
 withGhcStackProfiler :: IO () -> IO ()
 withGhcStackProfiler action =
   withRootStackProfiler True $ \manager ->
-    withStackProfiler manager (SampleIntervalMs 30) $
+    withStackProfiler manager (SampleIntervalMs 100) $
       action
 
 main :: IO ()
@@ -46,4 +46,5 @@ doRandom = do
     testWorkerStatus
     testControlStatus
 
-    threadDelay 30
+    -- Wait for a little bit
+    threadDelay 100
