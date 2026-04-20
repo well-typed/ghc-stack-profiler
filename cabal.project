@@ -2,10 +2,9 @@ packages:
   ghc-stack-profiler/
   ghc-stack-profiler-core/
   ghc-stack-profiler-speedscope/
-
-optional-packages:
   examples/simple/
   examples/simple-scope/
+  examples/eventlog-socket/oddball/
 
 if !os(windows)
   optional-packages:
