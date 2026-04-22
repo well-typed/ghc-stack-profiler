@@ -109,11 +109,12 @@ test_oddball_ControlCallStackProfiling =
         hasMatchingUserMarker ("Summing" `T.isPrefixOf`)
           &> hasCallStackEvent -- TODO: This needs to be delimited.
           &> sendCommand socket stopCallStackProfiling
-          !> (2 `times` hasMatchingUserMarker ("Summing" `T.isPrefixOf`))
+          !> hasMatchingUserMarker (=="ghc-stack-profiler: Stop profiling")
           &> hasNoCallStackEvent
           ~> (2 `times` hasMatchingUserMarker ("Summing" `T.isPrefixOf`))
           &> sendCommand socket startCallStackProfiling
-          !> hasCallStackEvent -- TODO: This needs to be delimited.
+          !> hasMatchingUserMarker (=="ghc-stack-profiler: Start profiling")
+          &> hasCallStackEvent -- TODO: This needs to be delimited.
 
 -- | Assert that the input stream contains a binary call-stack event.
 hasCallStackEvent :: (HasLogger, HasTestInfo) => M.ProcessT IO E.Event E.Event
