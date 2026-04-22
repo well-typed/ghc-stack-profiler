@@ -159,25 +159,6 @@ library
     build-depends:
       eventlog-socket ^>=0.1.3
 
-test-suite ghc-stack-profiler-tests
-  import: warnings
-  type: exitcode-stdio-1.0
-  main-is: Main.hs
-  hs-source-dirs: tests/
-  build-depends:
-    base,
-    binary,
-    bytestring,
-    eventlog-socket-control,
-    eventlog-socket-tests,
-    filepath,
-    ghc-events,
-    ghc-stack-profiler-core,
-    machines,
-    tasty,
-    temporary,
-    text,
-
 source-repository head
   type: git
   location: https://github.com/well-typed/ghc-stack-profiler.git

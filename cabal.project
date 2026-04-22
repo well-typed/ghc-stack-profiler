@@ -2,6 +2,7 @@ packages:
   ghc-stack-profiler/
   ghc-stack-profiler-core/
   ghc-stack-profiler-speedscope/
+  ghc-stack-profiler-tests/
   examples/simple/
   examples/simple-scope/
   examples/eventlog-socket/oddball/
