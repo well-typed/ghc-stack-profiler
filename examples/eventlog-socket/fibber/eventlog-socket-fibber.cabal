@@ -1,5 +1,5 @@
 cabal-version:   3.8
-name:            eventlog-socket-example
+name:            eventlog-socket-fibber
 version:         0.1.0.0
 license:         NONE
 author:          Hannes Siebenhandl
@@ -15,7 +15,7 @@ common run-options
 common comp-options
     ghc-options: -finfo-table-map -fdistinct-constructor-tables
 
-executable eventlog-socket-example
+executable eventlog-socket-fibber
     import:           warnings, run-options, comp-options
     main-is:          Main.hs
     build-depends:
