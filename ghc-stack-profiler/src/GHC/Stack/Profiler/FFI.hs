@@ -16,6 +16,7 @@ import Control.Exception
 import qualified Control.Monad.STM as STM
 import GHC.Stack.Profiler.Manager
 import GHC.Stack.Profiler.Commands
+import Debug.Trace (traceMarkerIO)
 
 #if defined(EVENTLOG_SOCKET_SUPPORT)
 startProfilerCommandId :: CommandId
@@ -89,8 +90,10 @@ endEventLoggingHook manager = do
 
 startProfilerCommand :: StackProfilerManager -> IO ()
 startProfilerCommand manager = do
+  traceMarkerIO "ghc-stack-profiler: Start profiling"
   startProfiling manager
 
 stopProfilerCommand :: StackProfilerManager -> IO ()
 stopProfilerCommand manager = do
   stopProfiling manager
+  traceMarkerIO "ghc-stack-profiler: Stop profiling"
