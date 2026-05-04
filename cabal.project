@@ -1,6 +1,7 @@
 packages:
   examples/eventlog-socket/fibber/
   examples/eventlog-socket/jumpy-jump/
+  examples/eventlog-socket/oddball/
   examples/simple/
   examples/simple-scope/
   ghc-stack-profiler/
