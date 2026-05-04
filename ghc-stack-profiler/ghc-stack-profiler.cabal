@@ -106,7 +106,7 @@ library
     GHC.Stack.Profiler
     GHC.Stack.Profiler.Commands
     GHC.Stack.Profiler.Decode
-    GHC.Stack.Profiler.FFI
+    GHC.Stack.Profiler.Eventlog.Socket
     GHC.Stack.Profiler.Manager
     GHC.Stack.Profiler.Stack.Compat
     GHC.Stack.Profiler.Stack.Decode
