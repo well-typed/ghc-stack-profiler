@@ -1,0 +1,35 @@
+cabal-version: 3.8
+name: ghc-stack-profiler-tests
+version: 0.2.0.0
+license: BSD-3-Clause
+author: Hannes Siebenhandl, Wen Kokke, Matthew Pickering
+maintainer: hannes@well-typed.com
+build-type: Simple
+synopsis: Test suite for ghc-stack-profiler
+description: Test suite for ghc-stack-profiler.
+category: Profiling, Benchmarking, Development
+
+common warnings
+  ghc-options:
+    -Wall
+    -Wunused-packages
+
+test-suite ghc-stack-profiler-tests
+  import: warnings
+  type: exitcode-stdio-1.0
+  main-is: Main.hs
+  hs-source-dirs: tests/
+  build-depends:
+    base,
+    binary,
+    bytestring,
+    eventlog-socket-control,
+    eventlog-socket-tests,
+    filepath,
+    ghc-events,
+    ghc-stack-profiler-core,
+    machines,
+    tasty,
+    temporary,
+    text,
+  ghc-options: -threaded
