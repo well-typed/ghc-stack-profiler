@@ -7,17 +7,6 @@ optional-packages:
   examples/simple/
   examples/simple-scope/
 
-if !os(windows)
-  optional-packages:
-    examples/eventlog-socket-example/
-
-  -- In this project, we always build with '+control' on non-windows
-  package ghc-stack-profiler
-    flags: +control
-
-  package eventlog-socket
-    flags: +control
-
 if impl(ghc >=9.14)
   allow-newer:
     base,
