@@ -49,7 +49,7 @@ import GHC.Stack.Profiler.Core.ThreadSample
 import GHC.Stack.Profiler.Core.Util
 import GHC.Stack.Profiler.Decode
 import qualified GHC.Stack.Profiler.Decode as Decode
-import qualified GHC.Stack.Profiler.FFI as FFI
+import qualified GHC.Stack.Profiler.Eventlog.Socket as EventlogSocket
 import GHC.Stack.Profiler.Manager
 import GHC.Stack.Profiler.SymbolTable (readSymbolTable)
 
@@ -117,7 +117,7 @@ runNewStackProfilerManager :: Bool -> IO StackProfilerManager
 runNewStackProfilerManager shouldRun = do
   manager <- newStackProfilerManager shouldRun
   startEventLoopThread manager
-  FFI.installEventlogSocketHandlers manager `catches` FFI.defaultErrorHandlers
+  EventlogSocket.registerWithEventlogSocket manager
   pure manager
 
 shutdownStackProfilerManager :: StackProfilerManager -> IO ()
