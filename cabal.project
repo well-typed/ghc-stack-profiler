@@ -7,6 +7,7 @@ packages:
   ghc-stack-profiler/
   ghc-stack-profiler-core/
   ghc-stack-profiler-speedscope/
+  ghc-stack-profiler-tests/
 
 if impl(ghc >=9.14)
   allow-newer:
@@ -14,3 +15,12 @@ if impl(ghc >=9.14)
     template-haskell,
     ghc-bignum,
     containers,
+
+-- 2026-05-04:
+-- Add eventlog-socket-tests as a dependency. This package should not be
+-- published and hence should only be used by ghc-stack-profiler-tests.
+source-repository-package
+    type: git
+    location: https://github.com/well-typed/eventlog-socket.git
+    tag: b32683a54f898f45306fb2327a126a9e74969003
+    subdir: eventlog-socket-tests
