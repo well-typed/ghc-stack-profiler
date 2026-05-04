@@ -1,4 +1,5 @@
 packages:
+  examples/eventlog-socket/fibber/
   examples/simple/
   examples/simple-scope/
   ghc-stack-profiler/
