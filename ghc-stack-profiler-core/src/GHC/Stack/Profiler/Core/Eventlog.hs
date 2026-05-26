@@ -42,22 +42,22 @@ import GHC.Stack.Profiler.Core.Util
 --
 -- @
 -- MESSAGE
---  := "FF" "CA" <stack: STACK>
---   | "FF" "CB" <prefix: STACK>
---   | "FF" "CC" <stringId: Word64> <string: CStringLen>
---   | "FF" "CD" <srcLocId: Word64> <row: Word32> <col: Word32> <functionId: Word64> <filename: Word64>
+--  := FF CA (stack: STACK>
+--   | FF CB (prefix: STACK>
+--   | FF CC (stringId: 'Word64') (string: CStringLen)
+--   | FF CD (srcLocId: 'Word64') (row: 'Word32') (col: 'Word32') (functionId: 'Word64') (filename: 'Word64')
 --
 -- STACK
---  := <capability: Word32> <threadId: Word32> <length: Int16> <ENTRY>+
+--  := (capability: 'Word32') (threadId: 'Word32') (length: 'Int16') (ENTRY)+
 --   # check that length < (2^16-8) / 9
 --
 -- ENTRY
---  := "01" <ipe: Word64>
---   | "02" <stringId: Word64>
---   | "03" <srcLocId: Word64>
+--  := 01 (ipe: 'Word64')
+--   | 02 (stringId: 'Word64')
+--   | 03 (srcLocId: 'Word64')
 --
 -- CStringLen
---   := <length: Int16> <Char>+
+--   := (length: 'Int16') (Char)+
 --    # check that length < 2^16-8
 -- @
 data BinaryEventlogMessage
