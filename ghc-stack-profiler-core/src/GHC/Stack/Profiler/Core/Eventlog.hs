@@ -18,7 +18,8 @@ module GHC.Stack.Profiler.Core.Eventlog (
   callStackStringMessageTag,
   callStackSourceLocationMessageTag,
   callStackMessageTags,
-  callStackItemLimit,
+  callStackSizeLimit,
+  byteSizeOf,
   eventlogBufferSize,
   stringLengthLimit,
 ) where
@@ -54,7 +55,7 @@ import GHC.Stack.Profiler.Core.Util
 -- ENTRY
 --  := 01 (ipe: 'Word64')
 --   | 02 (stringId: 'Word64')
---   | 03 (srcLocId: 'Word64')
+--   | 03 (stringId: 'Word64') (srcLocId: 'Word64')
 --
 -- CStringLen
 --   := (length: 'Int16') (Char)+
@@ -84,15 +85,15 @@ data BinarySourceLocationMessage = MkBinarySourceLocationMessage
   { binarySourceLocationMessageId :: {-# UNPACK #-} !SourceLocationId
   , binarySourceLocationRow :: {-# UNPACK #-} !Word32
   , binarySourceLocationColumn :: {-# UNPACK #-} !Word32
-  , binarySourceLocationFunctionId :: {-# UNPACK #-} !StringId
   , binarySourceLocationFilename :: {-# UNPACK #-} !StringId
   }
   deriving (Eq, Ord, Show, Generic)
 
 data BinaryStackItem
   = BinaryIpe {-# UNPACK #-} !IpeId
-  | BinaryString {-# UNPACK #-} !StringId
-  | BinarySourceLocation {-# UNPACK #-} !SourceLocationId
+  | BinaryMessage
+      {-# UNPACK #-} !StringId
+      {-# UNPACK #-} !(Maybe SourceLocationId)
   deriving (Eq, Ord, Show, Generic)
 
 -- | Simple newtype for the ID of a capability.
@@ -160,8 +161,8 @@ stringLengthLimit =
       - 8 {- Word64 of 'StringId' -}
       - 2 {- Word16 for the length of the string to serialise -}
 
-callStackItemLimit :: Word16
-callStackItemLimit =
+callStackSizeLimit :: Word16
+callStackSizeLimit =
   word64ToWord16
     ( eventlogBufferSize
         - 2 {- 0xFFCA or 0xFFCB -}
@@ -169,7 +170,13 @@ callStackItemLimit =
         - 4 {- Word32 of 'ThreadId' -}
         - 2 {- Word16 for the length of stack entry -}
     )
-    `div` 9 {- Each 'BinaryStackItem' has at most 9 bytes -}
+
+-- | Size in bytes of the given 'BinaryStackItem'
+byteSizeOf :: BinaryStackItem -> Word16
+byteSizeOf = \ case
+  BinaryIpe{} -> 9
+  BinaryMessage _ Nothing -> 9
+  BinaryMessage _ (Just _) -> 17
 
 instance Binary BinaryEventlogMessage where
   put = \case
@@ -229,20 +236,21 @@ instance Binary BinaryCallStackMessage where
 instance Binary BinaryStackItem where
   put = \case
     BinaryIpe ipeId -> do
-      putWord8 1
+      putWord8 0x1
       put ipeId
-    BinaryString sid -> do
-      putWord8 2
+    BinaryMessage sid Nothing -> do
+      putWord8 0x2
       put sid
-    BinarySourceLocation lid -> do
-      putWord8 3
+    BinaryMessage sid (Just lid) -> do
+      putWord8 0x3
+      put sid
       put lid
 
   get = do
     getWord8 >>= \case
-      1 -> BinaryIpe <$> get
-      2 -> BinaryString <$> get
-      3 -> BinarySourceLocation <$> get
+      0x1 -> BinaryIpe <$> get
+      0x2 -> BinaryMessage <$> get <*> pure Nothing
+      0x3 -> BinaryMessage <$> get <*> (Just <$> get)
       n -> fail $ "StackItem: Unexpected tag byte encounter: " <> show n
 
 instance Binary BinarySourceLocationMessage where
@@ -250,7 +258,6 @@ instance Binary BinarySourceLocationMessage where
     put $ binarySourceLocationMessageId msg
     putWord32 (binarySourceLocationRow msg)
     putWord32 (binarySourceLocationColumn msg)
-    put (binarySourceLocationFunctionId msg)
     put (binarySourceLocationFilename msg)
 
   get = do
@@ -258,7 +265,6 @@ instance Binary BinarySourceLocationMessage where
       <$> get
       <*> getWord32
       <*> getWord32
-      <*> get
       <*> get
 
 instance Binary BinaryStringMessage where

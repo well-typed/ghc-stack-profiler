@@ -217,11 +217,8 @@ insertSourceLocationMessage :: BinarySourceLocationMessage -> IntMapTable -> Eit
 insertSourceLocationMessage msg tbl = do
   let
     srcLocId = binarySourceLocationMessageId msg
-    funcId = binarySourceLocationFunctionId msg
     fileId = binarySourceLocationFilename msg
 
-  funcName <-
-    maybe (Left $ KeyStringIdNotFound srcLocId funcId) Right $ lookupTextMessage funcId tbl
   fileName <-
     maybe (Left $ KeyStringIdNotFound srcLocId fileId) Right $ lookupTextMessage fileId tbl
 
@@ -230,15 +227,14 @@ insertSourceLocationMessage msg tbl = do
       { srcLocLookupTable =
           IntMap.insert
             (idToInt srcLocId)
-            (mkSourceLocation funcName fileName)
+            (mkSourceLocation fileName)
             (srcLocLookupTable tbl)
       }
  where
-  mkSourceLocation funcName fileName =
+  mkSourceLocation fileName =
     MkSourceLocation
       { line = binarySourceLocationRow msg
       , column = binarySourceLocationColumn msg
-      , functionName = funcName
       , fileName = fileName
       }
 

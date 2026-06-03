@@ -46,7 +46,6 @@ import GHC.Stack.CloneStack (StackSnapshot)
 import GHC.Stack.Profiler.Core.Eventlog
 import GHC.Stack.Profiler.Core.SourceLocation
 import GHC.Stack.Profiler.Core.SymbolTable
-import GHC.Stack.Profiler.Core.Util (chunksOf, word16ToInt)
 
 -- ----------------------------------------------------------------------------
 -- Thread Sample
@@ -85,8 +84,7 @@ data CallStackMessage = MkCallStackMessage
 
 data StackItem
   = IpeId !IpeId
-  | UserMessage !String
-  | SourceLocation !SourceLocation
+  | UserAnnotation !String !(Maybe SourceLocation)
   deriving (Eq, Ord, Show, Generic)
 
 -- ----------------------------------------------------------------------------
@@ -126,8 +124,9 @@ dehydrateCallStackMessage msgTbl0 msg =
     sourceLocDefs =
       map SourceLocationDef $ sourceLocMessages finalState
 
+    -- TODO: this needs to be fixed
     stackMsgChunks =
-      chunkCallStackMessage callStackItemLimit $
+      chunkCallStackMessage
         MkBinaryCallStackMessage
           { binaryCallThreadId = callThreadId msg
           , binaryCallCapabilityId = callCapabilityId msg
@@ -142,10 +141,11 @@ dehydrateCallStackMessage msgTbl0 msg =
   go = \case
     IpeId ipeId ->
       pure $ BinaryIpe ipeId
-    UserMessage s ->
-      BinaryString <$> lookupTextMessage (Text.pack s)
-    SourceLocation srcLoc ->
-      BinarySourceLocation <$> lookupSourceLocationMessage srcLoc
+    UserAnnotation s mSrcLoc -> do
+      srcLocId <- case mSrcLoc of
+        Nothing -> pure Nothing
+        Just srcLoc -> Just <$> lookupSourceLocationMessage srcLoc
+      BinaryMessage <$> lookupTextMessage (Text.pack s) <*> pure srcLocId
 
 data BinaryCallStackDecodeError
   = StringIdNotFound StringId
@@ -168,16 +168,18 @@ hydrateEventlogCallStackMessage decodeTable msg =
     decodeItem = \case
       BinaryIpe ipeId ->
         Right $ IpeId ipeId
-      BinaryString stringId ->
-        maybe
+      BinaryMessage stringId mSrcLocId -> do
+        str <- maybe
           (Left $ StringIdNotFound stringId)
-          (Right . UserMessage . Text.unpack)
+          (Right . Text.unpack)
           (lookupStringId decodeTable stringId)
-      BinarySourceLocation srcLocId ->
-        maybe
-          (Left $ SourceLocationIdNotFound srcLocId)
-          (Right . SourceLocation)
-          (lookupSourceLocationId decodeTable srcLocId)
+        srcLoc <- case mSrcLocId of
+          Nothing -> pure Nothing
+          Just srcLocId -> maybe
+            (Left $ SourceLocationIdNotFound srcLocId)
+            (Right . Just)
+            (lookupSourceLocationId decodeTable srcLocId)
+        pure $ UserAnnotation str srcLoc
 
     itemsOrErros = map decodeItem (binaryCallStack msg)
     (errors, items) = partitionEithers itemsOrErros
@@ -193,13 +195,13 @@ hydrateEventlogCallStackMessage decodeTable msg =
 -- | Combine all 'BinaryCallStackMessage's into a single 'BinaryCallStackMessage'.
 -- We assume that all 'BinaryCallStackMessage' only differ in their 'binaryCallStack' values.
 --
--- 'catCallStackMessage' is the inverse of 'chunkCallStackMessage'.
+-- 'catCallStackMessage' is the conceptually inverse of 'chunkCallStackMessage'.
 catCallStackMessage :: NonEmpty BinaryCallStackMessage -> BinaryCallStackMessage
 catCallStackMessage msgs =
   MkBinaryCallStackMessage
     { binaryCallThreadId = binaryCallThreadId $ NonEmpty.head msgs
     , binaryCallCapabilityId = binaryCallCapabilityId $ NonEmpty.head msgs
-    , binaryCallStack = concatMap binaryCallStack $ NonEmpty.toList msgs
+    , binaryCallStack = concatMap (reverse . binaryCallStack) . reverse $ NonEmpty.toList msgs
     }
 
 -- | Chunk the 'binaryCallStack' of the 'BinaryCallStackMessage' by the given 'Word16'.
@@ -210,13 +212,29 @@ catCallStackMessage msgs =
 --
 -- * all elements in @init r @ are 'CallStackChunk's
 -- * the element returned by @last r@ is a 'CallStackFinal' BinaryEventlogMessage.
-chunkCallStackMessage :: Word16 -> BinaryCallStackMessage -> [BinaryEventlogMessage]
-chunkCallStackMessage chunkSize msg0 =
+--
+-- The resulting 'CallStackChunk' are in reverse order and so are the chunks themselves.
+--
+-- This means, for a stack @[1,2,3,4,5,6]@ and an assumed chunk size of 2,
+-- we produce @[[6,5],[4,3],[2,1]]@.
+chunkCallStackMessage :: BinaryCallStackMessage -> [BinaryEventlogMessage]
+chunkCallStackMessage msg0 =
   let
     items = binaryCallStack msg0
-    chunked = chunksOf (word16ToInt chunkSize) items
+    chunked =
+      let
+        go (!size, curChunk, restChunk) item =
+          let
+            !bytes = byteSizeOf item
+          in
+            if size + bytes > callStackSizeLimit
+              then (0, [item], curChunk : restChunk)
+              else (size + bytes, item:curChunk, restChunk)
+        (_, lastChunk, initChunk) = foldl' go (0, [], []) items
+      in
+        lastChunk:initChunk
   in
-    go chunked
+    mkEventlogMessages chunked
  where
   mkCallStack chunk =
     MkBinaryCallStackMessage
@@ -225,16 +243,16 @@ chunkCallStackMessage chunkSize msg0 =
       , binaryCallStack = chunk
       }
 
-  go :: [[BinaryStackItem]] -> [BinaryEventlogMessage]
-  go [] =
+  mkEventlogMessages :: [[BinaryStackItem]] -> [BinaryEventlogMessage]
+  mkEventlogMessages [] =
     -- If there are no chunks, we simply return the original message
     [ CallStackFinal msg0
     ]
-  go [chunk] =
+  mkEventlogMessages [chunk] =
     [ CallStackFinal $ mkCallStack chunk
     ]
-  go (chunk : chunks) =
-    CallStackChunk (mkCallStack chunk) : go chunks
+  mkEventlogMessages (chunk : chunks) =
+    CallStackChunk (mkCallStack chunk) : mkEventlogMessages chunks
 
 -- ----------------------------------------------------------------------------
 -- Helper types and functions to implement the conversion to the binary
@@ -297,14 +315,12 @@ lookupSourceLocationMessage :: forall tbl. SourceLocation -> State (EncodingStat
 lookupSourceLocationMessage s = do
   (sid, new) <- lookupOrInsertSrcLocMessage s
   when new $ do
-    nameId <- lookupTextMessage $ functionName s
     fileId <- lookupTextMessage $ fileName s
     addSourceLocationMessage $
       MkBinarySourceLocationMessage
         { binarySourceLocationMessageId = sid
         , binarySourceLocationRow = line s
         , binarySourceLocationColumn = column s
-        , binarySourceLocationFunctionId = nameId
         , binarySourceLocationFilename = fileId
         }
   pure sid

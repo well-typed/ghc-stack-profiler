@@ -8,7 +8,6 @@ import GHC.Generics (Generic)
 data SourceLocation = MkSourceLocation
   { line :: !Word32
   , column :: !Word32
-  , functionName :: !Text
   , fileName :: !Text
   }
   deriving (Eq, Ord, Show, Generic)

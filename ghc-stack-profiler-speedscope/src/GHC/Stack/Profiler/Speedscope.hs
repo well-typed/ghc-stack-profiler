@@ -186,19 +186,12 @@ processEventLogProfileState mode evProfileState =
 
     mkCostCentreFrame :: UserCostCentre -> Frame
     mkCostCentreFrame = \ case
-      CostCentreMessage msg ->
+      CostCentreMessage msg mloc ->
         Frame
           { name = msg
-          , file = Nothing
-          , col = Nothing
-          , line = Nothing
-          }
-      CostCentreSrcLoc loc ->
-        Frame
-          { name = functionName loc
-          , file = Just $ fileName loc
-          , col = Just $ word32ToInt $  ThreadSample.column loc
-          , line = Just $ word32ToInt $ ThreadSample.line loc
+          , file = fileName <$> mloc
+          , col = word32ToInt . ThreadSample.column <$> mloc
+          , line = word32ToInt . ThreadSample.line <$> mloc
           }
       CostCentreIpe InfoProv{infoTableName, infoProvModule, infoProvLabel, infoProvSrcLoc} ->
         Frame
@@ -406,15 +399,14 @@ hydrateBinaryEventlog elProf msg =
     --
     -- Concrete example, assuming a stack @[1,2,3,4,5,6]@ and chunk size of 2:
     --
-    -- 1. Chunk it: @[1,2] [3,4] [5,6]@
+    -- 1. Chunk it: @[6,5] [4,3] [2,1]@
     -- 2. Write it to the eventlog in this order, so the messages are:
-    --    [1,2]
-    --    [3,4]
-    --    [5,6]
+    --    [6,5]
+    --    [4,3]
+    --    [2,1]
     -- 3. When reading the eventlog, we store prepend later messages, resulting in:
-    --    [5,6] [3,4] [1,2]
-    -- 4. One reverse later: @[1,2] [3,4] [5,6]@
-    -- 5. Now we can finally concat the stack frame chunks.
+    --    [2,1] [4,3] [6,5]
+    -- 4. 'catCallStackMessage' reverses the individual callstack chunks to be the inverse of 'chunkCallStackMessage'
     orderedChunks = NonEmpty.reverse $ msg :| chunks
     fullBinaryCallStackMessage = catCallStackMessage orderedChunks
     (callStackMessage, errs) =
@@ -437,11 +429,8 @@ lookupOrAddStackItemToProfile elProf = \ case
       Just prov ->
         lookupOrInsertCostCentre (CostCentreIpe prov)
 
-  ThreadSample.UserMessage msg ->
-    lookupOrInsertCostCentre (CostCentreMessage $ fromString msg)
-
-  SourceLocation loc ->
-    lookupOrInsertCostCentre (CostCentreSrcLoc loc)
+  UserAnnotation msg loc ->
+    lookupOrInsertCostCentre (CostCentreMessage (fromString msg) loc)
 
   where
     lookupOrInsertCostCentre userMessage =

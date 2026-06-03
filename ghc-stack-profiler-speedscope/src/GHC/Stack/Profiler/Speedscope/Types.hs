@@ -34,7 +34,6 @@ newtype InfoProvId = InfoProvId Word64
   deriving (Eq, Ord, Show)
 
 data UserCostCentre
-  = CostCentreMessage !Text
-  | CostCentreSrcLoc !SourceLocation
+  = CostCentreMessage !Text !(Maybe SourceLocation)
   | CostCentreIpe !InfoProv
   deriving (Eq, Ord, Show)
