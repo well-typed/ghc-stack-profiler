@@ -1,4 +1,26 @@
-module GHC.Stack.Profiler.Core.Util where
+module GHC.Stack.Profiler.Core.Util (
+  idToInt,
+  putTextWord16,
+  getTextWord16,
+  showAsHex,
+  putWord64,
+  putWord32,
+  putWord16,
+  getWord64,
+  getWord32,
+  getWord16,
+  word64ToWord32,
+  word32ToWord64,
+  word64ToWord16,
+  word32ToInt,
+  word64ToInt,
+  intToWord64,
+  intToWord32,
+  intToWord16,
+  word16ToInt,
+  intToWord8,
+  word8ToInt,
+  ) where
 
 import Control.Monad (replicateM)
 import Data.Binary
@@ -80,40 +102,3 @@ intToWord8 = fromIntegral
 
 word8ToInt :: Word8 -> Int
 word8ToInt = fromIntegral
-
--- | @'chunksOf' n@ splits a list into length-n pieces.  The last
---   piece will be shorter if @n@ does not evenly divide the length of
---   the list.  If @n <= 0@, @'chunksOf' n l@ returns an infinite list
---   of empty lists.
---
--- >>> chunksOf 3 [1..12]
--- [[1,2,3],[4,5,6],[7,8,9],[10,11,12]]
---
--- >>> chunksOf 3 "Hello there"
--- ["Hel","lo ","the","re"]
---
--- >>> chunksOf 3 ([] :: [Int])
--- []
---
---   Note that @'chunksOf' n []@ is @[]@, not @[[]]@.  This is
---   intentional, and satisfies the property that
---
---   @chunksOf n xs ++ chunksOf n ys == chunksOf n (xs ++ ys)@
---
---   whenever @n@ evenly divides the length of @xs@.
---
---
--- This is the definition of 'chunksOf' as defined in
--- https://hackage.haskell.org/package/split-0.2.5/docs/Data-List-Split-Internals.html#v:chunksOf
---
--- We avoid an extra dependency on 'split', as we want to
--- only depend on GHC boot libraries in the core package.
-chunksOf :: Int -> [e] -> [[e]]
-chunksOf i ls = map (take i) (build (splitter ls))
- where
-  splitter :: [e] -> ([e] -> a -> a) -> a -> a
-  splitter [] _ n = n
-  splitter l c n = l `c` splitter (drop i l) c n
-
-build :: ((a -> [a] -> [a]) -> [a] -> [a]) -> [a]
-build g = g (:) []

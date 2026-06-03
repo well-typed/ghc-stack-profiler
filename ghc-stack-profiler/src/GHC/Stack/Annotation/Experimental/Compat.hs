@@ -3,21 +3,39 @@
 
 module GHC.Stack.Annotation.Experimental.Compat (
   SomeStackAnnotation (..),
-  CallStackAnnotation (..),
-  StringAnnotation (..),
+  showStackAnnotationLocation,
+  showStackAnnotationDescription,
 ) where
 
 #if MIN_VERSION_ghc_internal(9,1400,0)
 import GHC.Stack.Annotation.Experimental
 #else
 import Data.Typeable
-import GHC.Stack.Types (CallStack)
+#endif
+import GHC.Stack.Types (SrcLoc)
 
+
+#if !MIN_VERSION_ghc_internal(9,1400,0)
 data SomeStackAnnotation where
   SomeStackAnnotation :: forall a. (Typeable a) => a -> SomeStackAnnotation
+#endif
 
-data StringAnnotation where
-  StringAnnotation :: String -> StringAnnotation
 
-newtype CallStackAnnotation = CallStackAnnotation CallStack
+showStackAnnotationLocation :: SomeStackAnnotation -> Maybe SrcLoc
+showStackAnnotationLocation =
+#if MIN_VERSION_ghc_internal(9,1402,0)
+  stackAnnotationSourceLocation
+#else
+  \ _ann -> Nothing
+#endif
+
+
+showStackAnnotationDescription :: SomeStackAnnotation -> String
+showStackAnnotationDescription =
+#if MIN_VERSION_ghc_internal(9,1402,0)
+  displayStackAnnotationShort
+#elif MIN_VERSION_ghc_internal(9,1400,0)
+  displayStackAnnotation
+#else
+  \ _ann -> "showStackAnnotationLocation: Impossible, no value should be created with ghc-internal < 9.1400"
 #endif

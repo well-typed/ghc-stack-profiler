@@ -82,16 +82,13 @@ binaryEventlogDefinitions table =
   go :: SourceLocationId -> SourceLocation -> BinarySourceLocationMessage
   go sid s =
     let
-      (funcId, newFuncName, _) = lookupOrInsertText table (writerTable table) (functionName s)
       (fileId, newFileName, _) = lookupOrInsertText table (writerTable table) (fileName s)
     in
       -- These should always be found
-      assert (not newFuncName) $
-        assert (not newFileName) $
-          MkBinarySourceLocationMessage
-            { binarySourceLocationMessageId = sid
-            , binarySourceLocationRow = line s
-            , binarySourceLocationColumn = column s
-            , binarySourceLocationFunctionId = funcId
-            , binarySourceLocationFilename = fileId
-            }
+      assert (not newFileName) $
+        MkBinarySourceLocationMessage
+          { binarySourceLocationMessageId = sid
+          , binarySourceLocationRow = line s
+          , binarySourceLocationColumn = column s
+          , binarySourceLocationFilename = fileId
+          }

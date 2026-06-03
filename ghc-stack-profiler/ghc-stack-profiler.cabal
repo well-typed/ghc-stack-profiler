@@ -54,9 +54,7 @@ description:
 extra-doc-files: CHANGELOG.md
 category: Profiling, Benchmarking, Development
 tested-with:
-  ghc ==9.10.3
-  ghc ==9.12.2
-  ghc ==9.14.1
+  ghc ==10.1 || ==9.14.1 || ==9.12.2 || ==9.10.3
 
 common warnings
   ghc-options:
@@ -119,8 +117,8 @@ library
     binary >=0.8.9.3 && <0.11,
     bytestring >=0.11 && <0.13,
     containers >=0.6.8 && <0.9,
-    ghc-heap >=9.10.1 && <9.16,
-    ghc-internal >=9.1001 && <9.1600,
+    ghc-heap >=9.10.1 && <10.2,
+    ghc-internal >=9.1001 && <10.200,
     ghc-stack-profiler-core ==0.2.0.0,
     stm ^>=2.5.3.0 || ^>=2.5.0.0,
     text >=2 && <2.2,
@@ -129,7 +127,7 @@ library
     src
 
   if impl(ghc >=9.14)
-    build-depends: ghc-experimental >=9.1400 && <9.1600
+    build-depends: ghc-experimental >=9.1400 && <10.200
 
   if flag(use-ghc-trace-events) || impl(ghc <9.12)
     cpp-options:
