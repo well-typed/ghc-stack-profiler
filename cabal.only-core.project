@@ -1,0 +1,4 @@
+-- This .project file is used to build only the
+-- ghc-stack-profiler-core package.
+-- Allows us to test a wider variety of GHC versions in CI.
+packages: ./ghc-stack-profiler-core

@@ -13,7 +13,7 @@ description:
 extra-doc-files: CHANGELOG.md
 category: Profiling, Benchmarking, Development
 tested-with:
-  ghc ==10.1 || ==9.14.1 || ==9.12.2 || ==9.10.3
+  ghc ==10.1 || ==9.14.1 || ==9.12.2 || ==9.10.3 || ==9.8.4 || ==9.6.7 || ==9.4.8
 
 common warnings
   ghc-options:
