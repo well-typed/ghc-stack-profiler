@@ -35,13 +35,14 @@ import qualified Control.Monad.Trans.State.Strict as State
 import Data.Binary
 import Data.Binary.Get
 import qualified Data.ByteString.Lazy as LBS
+import Data.Either (partitionEithers)
+import qualified Data.List as List
 import Data.List.NonEmpty (NonEmpty (..))
 import qualified Data.List.NonEmpty as NonEmpty
 import Data.Text (Text)
 import qualified Data.Text as Text
 import GHC.Generics
 
-import Data.Either (partitionEithers)
 import GHC.Stack.CloneStack (StackSnapshot)
 import GHC.Stack.Profiler.Core.Eventlog
 import GHC.Stack.Profiler.Core.SourceLocation
@@ -230,7 +231,7 @@ chunkCallStackMessage msg0 =
             if size + bytes > callStackSizeLimit
               then (0, [item], curChunk : restChunk)
               else (size + bytes, item:curChunk, restChunk)
-        (_, lastChunk, initChunk) = foldl' go (0, [], []) items
+        (_, lastChunk, initChunk) = List.foldl' go (0, [], []) items
       in
         lastChunk:initChunk
   in
