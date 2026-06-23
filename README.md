@@ -21,7 +21,7 @@ To profile a program it needs to be compiled and instrumented with the `ghc-stac
 import GHC.Stack.Profiler
 
 main :: IO ()
-main = setupRootStackProfiler True $ \ manager -> withStackProfilerForMyThread manager (SampleIntervalMs 10) $ do
+main = withRootStackProfiler True $ \ manager -> withStackProfilerForMyThread manager (SampleIntervalMs 10) $ do
     ...
 ```
 

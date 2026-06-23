@@ -1,5 +1,11 @@
 # Revision history for ghc-stack-profiler
 
+## 0.3.0.0 -- 2026-06-23
+
+* Support GHC 10.1 [#29](https://github.com/well-typed/ghc-stack-profiler/pull/29)
+  * Adds supports for optional source locations in stack annotations
+* Add eventlog-socket tests to ghc-stack-profiler [#25](https://github.com/well-typed/ghc-stack-profiler/pull/25)
+
 ## 0.2.0.0 -- 2026-04-10
 
 * Backport stack decoding segmentation fault fix from GHC HEAD [#20](https://github.com/well-typed/ghc-stack-profiler/pull/20)

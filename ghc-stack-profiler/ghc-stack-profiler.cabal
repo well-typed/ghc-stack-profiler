@@ -1,6 +1,6 @@
 cabal-version: 3.8
 name: ghc-stack-profiler
-version: 0.2.0.0
+version: 0.3.0.0
 license: BSD-3-Clause
 author: Hannes Siebenhandl, Wen Kokke, Matthew Pickering
 maintainer: hannes@well-typed.com
@@ -14,11 +14,13 @@ description:
   To profile a program it needs to be compiled and instrumented with the 'ghc-stack-profiler' package via:
 
   @
-  import GHC.Stack.Profiler.Sampler
+  import GHC.Stack.Profiler
 
   main :: IO ()
-  main = 'withStackProfilerForMyThread' ('SampleIntervalMs' 10) $ do
-      ...
+  main = 
+    'withRootStackProfiler' True $ \ manager -> 
+      'withStackProfilerForMyThread' manager ('SampleIntervalMs' 10) $ do
+        ...
   @
 
   This will spawn a profiling thread that will periodically take a snapshot of the current RTS callstack of your program and serialises it to the eventlog.
@@ -119,7 +121,7 @@ library
     containers >=0.6.8 && <0.9,
     ghc-heap >=9.10.1 && <10.2,
     ghc-internal >=9.1001 && <10.200,
-    ghc-stack-profiler-core ==0.2.0.0,
+    ghc-stack-profiler-core ==0.3.0.0,
     stm ^>=2.5.3.0 || ^>=2.5.0.0,
     text >=2 && <2.2,
 
