@@ -1,6 +1,6 @@
 cabal-version: 3.8
 name: ghc-stack-profiler-speedscope
-version: 0.3.0.0
+version: 0.4.0.0
 license: BSD-3-Clause
 author: Hannes Siebenhandl, Wen Kokke, Matthew Pickering
 maintainer: hannes@well-typed.com
@@ -23,12 +23,15 @@ common warnings
 
 common exts
   default-extensions:
+    AllowAmbiguousTypes
     DeriveGeneric
     DerivingStrategies
     DuplicateRecordFields
+    GADTs
     LambdaCase
     NamedFieldPuns
     NoImportQualifiedPost
+    OverloadedRecordDot
     ViewPatterns
 
 common runopts
@@ -36,13 +39,20 @@ common runopts
     -threaded
     -rtsopts
 
+common buildopts
+  ghc-options:
+    -fexpose-all-unfoldings
+    -fspecialise-aggressively
+    -fstg-lift-lams
+
 library
   import:
-    warnings, exts
+    warnings, buildopts, exts
 
   exposed-modules:
     GHC.Stack.Profiler.Speedscope
-    GHC.Stack.Profiler.Speedscope.IpeDb
+
+  other-modules:
     GHC.Stack.Profiler.Speedscope.Options
     GHC.Stack.Profiler.Speedscope.Types
 
@@ -50,12 +60,14 @@ library
     aeson >=2.2 && <2.3,
     base >=4.20 && <4.23,
     bytestring >=0.11 && <0.13,
-    containers >=0.6.8 && <0.9,
+    containers ^>=0.7 || ^>=0.8,
+    data-default >=0.2 && <0.9,
     extra ^>=1.8.1,
+    filepath ^>=1.4 || ^>=1.5,
     ghc-events ^>=0.20,
     ghc-stack-profiler-core ==0.3.0.0,
     hs-speedscope ^>=0.3,
-    ipedb ^>=0.1.0.0,
+    ipedb ^>=0.2.0.0,
     machines ^>=0.7.4,
     optparse-applicative ^>=0.19,
     text >=2 && <2.2,
@@ -67,7 +79,7 @@ library
 
 executable ghc-stack-profiler-speedscope
   import:
-    warnings, exts, runopts
+    warnings, buildopts, exts, runopts
 
   hs-source-dirs:
     app
@@ -76,8 +88,7 @@ executable ghc-stack-profiler-speedscope
     Main.hs
 
   build-depends:
-    base,
-    ghc-stack-profiler-speedscope,
+    ghc-stack-profiler-speedscope
 
   default-language: GHC2021
 

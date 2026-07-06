@@ -1,394 +1,241 @@
-{-# LANGUAGE CPP               #-}
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE OverloadedStrings #-}
-module GHC.Stack.Profiler.Speedscope where
 
-import Control.Monad
-import Data.Aeson
-import qualified Data.ByteString.Lazy as LBS
-import Data.Char
+module GHC.Stack.Profiler.Speedscope (main) where
+
+import Control.Applicative (Alternative (..))
+import Control.Monad (replicateM, void, when)
+import Control.Monad.IO.Class (MonadIO (..))
+import qualified Data.Aeson as JSON (encode)
+import qualified Data.ByteString as BS
+import qualified Data.ByteString.Lazy as BSL
+import Data.Char (isDigit)
 import Data.Coerce (coerce)
-import Data.Functor.Identity (Identity (..))
-import Data.IntMap (IntMap)
-import qualified Data.IntMap.Strict as IntMap
-import Data.List.Extra
+import Data.Default (Default (..))
+import Data.Either (partitionEithers)
+import Data.Foldable (for_)
+import Data.List.Extra (groupSort, mapAccumR, sortOn)
 import Data.List.NonEmpty (NonEmpty (..))
 import qualified Data.List.NonEmpty as NonEmpty
-import Data.Machine (Is, Moore (..), PlanT, ProcessT, await, construct, source, yield, (~>))
-import Data.Machine.Runner (foldlT)
-import Data.Map (Map)
+import Data.Machine (AutomatonM (..), Is, Moore (..), PlanT, ProcessT, await, construct, final, runT, yield, (~>))
+import qualified Data.Machine as M
+import Data.Machine.MealyT (scanMealyTM)
+import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
-import Data.Maybe
-import Data.String (fromString)
+import Data.Maybe (fromMaybe, isNothing, listToMaybe)
 import Data.Text (Text)
 import qualified Data.Text as Text
-import qualified Data.Text.Read as Read
-import Data.Tuple
-import Data.Version
-import Data.Word
-import GHC.RTS.Events hiding (StringId, header, str)
-import qualified Options.Applicative as Options
-import Speedscope.Schema
-import qualified System.IO.Unsafe as Unsafe
-import Text.ParserCombinators.ReadP hiding (between)
-
-import GHC.Stack.Profiler.Core.Eventlog
-import GHC.Stack.Profiler.Core.SymbolTable
-import GHC.Stack.Profiler.Core.ThreadSample as ThreadSample
-import GHC.Stack.Profiler.Core.Util
-import GHC.Stack.Profiler.Speedscope.IpeDb (toSpeedscopeInfoProv)
+import Data.Version (Version, makeVersion)
+import Data.Word (Word64)
+import qualified GHC.RTS.Events as E
+import qualified GHC.RTS.Events.Incremental as E
+import qualified GHC.Stack.Profiler.Core.Eventlog as GSP
+import qualified GHC.Stack.Profiler.Core.SymbolTable as GSP
+import qualified GHC.Stack.Profiler.Core.ThreadSample as GSP
+import qualified GHC.Stack.Profiler.Core.Util as GSP (word64ToInt)
 import GHC.Stack.Profiler.Speedscope.Options
-import qualified GHC.Stack.Profiler.Speedscope.Options as IpeDbConf (IpeConf (..))
 import GHC.Stack.Profiler.Speedscope.Types
-import qualified IpeDb.InfoProv as IpeDb
-import qualified IpeDb.Query as IpeDb
-import qualified IpeDb.Types as IpeDb
-import Data.Either (partitionEithers)
-import System.IO
+import qualified IpeDB.Database as DB
+import qualified IpeDB.Types.InfoProv as IP
+import qualified Options.Applicative as O
+import qualified Speedscope.Schema as Speedscope
+import qualified System.IO as IO
+import qualified Text.ParserCombinators.ReadP as P
 
-entry :: IO ()
-entry = do
-  os <- Options.execParser options
-  run os
+main :: IO ()
+main = run =<< O.execParser opts
 
-run :: SSOptions -> IO ()
-run SSOptions{ file, isolateStart, isolateEnd, aggregationMode, ipeDbConf } = withOptionalIpeDb ipeDbConf $ \mInfoProvDb -> do
-  -- We extract the 'InfoProv's before collecting the thread samples to avoid
-  -- having to sort the 'InfoProv's and causing a space leak.
-  -- We reduce the memory usage considerably by doing this separately.
-  oracle <- case mInfoProvDb of
-    Just (conf, db) -> do
-      case index conf of
-        True -> IpeDb.populateFromEventlog db file
-        False -> pure ()
-      pure $ oracleFromInfoProvDb db
-    Nothing -> do
-      elIpe <- either error id <$> readEventLogFromFile file
-      let infoProv = parseIpeTraces (isolateStart, isolateEnd) elIpe
-      pure $ oracleFromMap infoProv
+run :: Opts -> IO ()
+run Opts{eventlogSource, outputFile, isolateStart, isolateEnd, aggregationMode, maybeIpeDBOpts} =
+  -- Create an IPE table.
+  withIpeDB maybeIpeDBOpts $ \infoProvTable -> do
+    -- NOTE: The eventlog file is read twice, because in certain cases
+    --       `ghc-stack-profiler` events _may_ precede the init events,
+    --       which would require that we sort the _entire_ eventlog.
+    --       Traversing the file twice means that we only have to sort
+    --       the events that contain stack frames.
+    --
+    -- Index the IPE events.
+    when (isNothing maybeIpeDBOpts) $
+      withEventlogSource eventlogSource $ \eventlogHandle ->
+        M.runT_ $
+          fromHandle eventlogHandle
+            ~> decodeEvents
+            ~> DB.indexer IP.toInfoProv def infoProvTable
 
-  -- Now do the actual work
-  el <- either error id <$> readEventLogFromFile file
-  profileJson <- convertToSpeedscope aggregationMode (isolateStart, isolateEnd) isInfoEvent processEventsDefault oracle el
-  encodeFile (file ++ ".json") profileJson
+    -- Convert the eventlog to a speedscope file.
+    let
+      isProfileEvent :: E.EventInfo -> Bool
+      isProfileEvent E.ProgramArgs{} = True
+      isProfileEvent E.RtsIdentifier{} = True
+      isProfileEvent E.ProfBegin{} = True
+      isProfileEvent E.UserBinaryMessage{} = True
+      isProfileEvent _ = False
+    eventlogProfile <-
+      processEventlogProfile
+        aggregationMode
+        (isolateStart, isolateEnd)
+        isProfileEvent
+        infoProvTable
+        eventlogSource
+    let
+      speedscopeFile = toSpeedscopeFile eventlogProfile
+    withOutputFile eventlogSource outputFile $ \outputHandle ->
+      BSL.hPutStr outputHandle (JSON.encode speedscopeFile)
 
-withOptionalIpeDb :: Maybe IpeConf -> (Maybe (IpeConf, IpeDb.InfoProvDb) -> IO a) -> IO ()
-withOptionalIpeDb mConf act = case mConf of
-  Nothing -> do
-    _ <- act Nothing
-    pure ()
-  Just conf -> IpeDb.withInfoProvDb (IpeDbConf.file conf) $ \ db -> do
-    _ <- act (Just (conf, db))
-    pure ()
+withIpeDB ::
+  forall r.
+  Maybe IpeDBOpts ->
+  ( DB.Table IP.InfoProvId IP.InfoProv ->
+    IO r
+  ) ->
+  IO r
+withIpeDB = \case
+  Nothing -> \action ->
+    -- Create a database session.
+    DB.withNewSession def $ \session ->
+      -- Create the database table.
+      DB.withNewTable session def $ \table ->
+        action table
+  Just (IpeDBOpts ipeDBPath ipeDBFormat) -> \action ->
+    -- Create a database session.
+    DB.withNewSession def $ \session ->
+      -- Create a database table.
+      DB.withTableFrom session ipeDBPath ipeDBFormat $ \table ->
+        action table
 
--- | A Moore machine whose state indicates which delimiting markers have been
--- seen. If both markers are 'Nothing', then the state will always be 'True'.
--- If the first marker is given, then the state will always be 'False' until a
--- value which the marker is a prefix of is seen. If the second marker is given,
--- then the state will always be 'False' after a value which the marker is a
--- prefix of is seen.
-markers :: (Maybe Text, Maybe Text) -> Moore Text Bool
-markers (Nothing, Nothing) =
-    go
-  where
-    go = Moore True (const go)
-markers (Just s,  Nothing) =
-    wait_for_start
-  where
-    wait_for_start =
-      Moore False $ \s' ->
-        if s `Text.isPrefixOf` s' then
-          go
-        else
-          wait_for_start
-    go = Moore True (const go)
-markers (Nothing, Just e) =
-    go_until
-  where
-    go_until =
-      Moore True $ \e' ->
-        if e `Text.isPrefixOf` e' then
-          stop
-        else
-          go_until
-    stop = Moore False (const stop)
-markers (Just s, Just e) =
-    go_between
-  where
-    go_between =
-        Moore False wait_for_start
-      where
-        wait_for_start s' = if s `Text.isPrefixOf` s' then go_until else go_between
-    go_until =
-        Moore True close'
-      where
-        close' e' = if e `Text.isPrefixOf` e' then stop else go_until
-    stop = Moore False (const stop)
-
--- | Delimit the event process, and only include events which satisfy a
--- predicate.
-delimit
-    :: Monad m
-    => (EventInfo -> Bool)
-    -- ^ Only emit events which pass this predicate
-    -> Moore Text Bool
-    -- ^ Only emit events when this 'Moore' process state is 'True'. The process
-    -- will be given the values of 'UserMarker's in the event log.
-    -> ProcessT m Event Event
-delimit p =
-    construct . go
-  where
-    go :: Monad m => Moore Text Bool -> PlanT (Is Event) Event m ()
-    go mm@(Moore s next) = do
-      e <- await
-      case evSpec e of
-        -- on marker step the moore machine.
-        UserMarker m -> do
-            let mm'@(Moore s' _) = next m
-            -- if current or next state is open (== True), emit the marker.
-            when (s || s') $ yield e
-            go mm'
-
-        -- for other events, emit if the state is open and predicate passes
-        ei -> do
-            when (s || p ei) $ yield e
-            go mm
-
-processEventLogProfileState :: Aggregation -> EventLogProfileState -> EventLogProfile
-processEventLogProfileState mode evProfileState =
-  EventLogProfile
-    { profileProgName = profile_name
-    , profileFrames = all_frames
-    , profileProfiles = map (mkProfile profile_name interval) stack_profile_samples
-    , profileProgVersionString = Text.pack $ "ghc-stack-profiler-speedscope@" ++ CURRENT_PACKAGE_VERSION
-    , profileProcessingErrors = decoding_errors evProfileState
-    }
-  where
-    profile_name = fromMaybe "" (eventlog_prog_name evProfileState)
-
-    interval = fromMaybe 1 (prof_interval evProfileState)
-
-    all_frames :: [Frame]
-    all_frames =
-      map snd . sortOn fst $
-        map (fmap mkCostCentreFrame) (Map.elems $ user_cost_centres evProfileState)
-
-    stack_profile_samples :: [(Word64, [[Int]])]
-    stack_profile_samples =
-      case mode of
-        PerThread ->
-          -- groupSort is assumed to be stable
-          groupSort $ map mkThreadSample (reverse $ el_samples evProfileState)
-        PerCapability ->
-          -- groupSort is assumed to be stable
-          groupSort $ map mkCapabilitySample (reverse $ el_samples evProfileState)
-        NoAggregation ->
-          [(1, map mkSingleProfileSample (reverse $ el_samples evProfileState))]
-
-    mkCostCentreFrame :: UserCostCentre -> Frame
-    mkCostCentreFrame = \ case
-      CostCentreMessage msg mloc ->
-        Frame
-          { name = msg
-          , file = fileName <$> mloc
-          , col = word32ToInt . ThreadSample.column <$> mloc
-          , line = word32ToInt . ThreadSample.line <$> mloc
-          }
-      CostCentreIpe InfoProv{infoTableName, infoProvModule, infoProvLabel, infoProvSrcLoc} ->
-        Frame
-          { name =
-              if Text.null infoProvLabel
-                then infoProvModule <> " " <> infoTableName
-                else infoProvModule <> " " <> infoProvLabel
-          , file = if infoProvSrcLoc == ":" then Just infoProvModule else  fileName
-          , col = columnM
-          , line = lineM
-          }
-        where
-          (fileName, lineM, columnM) = tryParsingGhcSrcSpan infoProvSrcLoc
-
-    mkThreadSample :: Sample -> (Word64, [Int])
-    mkThreadSample (Sample ti _capId ccs) = (ti, map (word64ToInt . coerce) ccs)
-
-    mkCapabilitySample :: Sample -> (Word64, [Int])
-    mkCapabilitySample (Sample _ti capId ccs) = (coerce capId, map (word64ToInt . coerce) ccs)
-
-    mkSingleProfileSample :: Sample -> [Int]
-    mkSingleProfileSample (Sample _ti _capId ccs) = map (word64ToInt . coerce) ccs
-
--- | Convert an 'EventLog' into a speedscope profile JSON value. To convert the
--- event log using the traditional profile extraction logic, use `isInfoEvent`
--- and `processEventsDefault` for the predicate and processing function,
--- respectively.
-convertToSpeedscope
-  :: Aggregation
-  -- ^ How to aggregate the stack profile samples
-  -> (Maybe Text, Maybe Text)
-  -- ^ Delimiting markers. No events before a user marker containing the first
+-- | Process an eventlog from the given `EventlogSource` into an `EventlogProfile`.
+processEventlogProfile ::
+  -- | How to aggregate the stack profile samples
+  AggregationMode ->
+  -- | Delimiting markers. No events before a user marker containing the first
   -- string will be included. No events after a user marker containing the
   -- second string will be included.
-  -> (EventInfo -> Bool)
-  -- ^ Only consider events which satisfy this predicate
-  -> (EventLogProfileState -> Event -> EventLogProfileState)
-  -- ^ Specifies how to build the profile given the events included based on the
-  -- delimiters and predicate
-  -> InfoProvOracle
-  -- ^ Already gathered table for 'InfoProv's that have been collected prior.
-  -> EventLog
-  -> IO Value
-convertToSpeedscope mode (is, ie) considerEvent processEvents infoProvOracle (EventLog _h (Data es)) = do
-  eventLogProfileState <-
-    foldlT processEvents initEL $
-        source es ~>
-        delimit considerEvent (markers (is, ie))
-  let eventlogProfile = processEventLogProfileState mode eventLogProfileState
-  logDecodingErrors eventlogProfile
-  pure $ toJSON File
-    { shared             = Shared{ frames = profileFrames eventlogProfile }
-    , profiles           = profileProfiles eventlogProfile
-    , name               = Just $ profileProgName eventlogProfile
-    , activeProfileIndex = Just 0
-    , exporter           = Just $ profileProgVersionString eventlogProfile
-    }
-  where
-    initEL = EventLogProfileState
-      { eventlog_prog_name = Nothing
-      , rts_version = Nothing
-      , prof_interval = Nothing
-      , info_prov_oracle = infoProvOracle
-      , user_cost_centres = Map.empty
-      , cost_centre_counter = 0
-      , el_samples = []
-      , hydration_table = emptyIntMapTable
-      , current_callstack_chunks = []
-      , decoding_errors = []
+  (Maybe Text, Maybe Text) ->
+  -- | Only consider events which satisfy this predicate
+  (E.EventInfo -> Bool) ->
+  -- | Table with IPE data.
+  DB.Table IP.InfoProvId IP.InfoProv ->
+  EventlogSource ->
+  IO EventlogProfile
+processEventlogProfile aggregationMode (isolateStart, isolateEnd) considerEvent infoProvTable eventlogSource = do
+  -- Process the eventlog.
+  (profile, eventlogErrors) <-
+    fmap (processEventlogProfileState aggregationMode) $
+      withEventlogSource eventlogSource $ \eventlogHandle ->
+        fmap last . runT $
+          fromHandle eventlogHandle
+            ~> decodeEvents
+            ~> delimit considerEvent (markers (isolateStart, isolateEnd))
+            ~> processEvents infoProvTable
+            ~> final
+  logEventlogErrors eventlogErrors
+  pure profile
+
+-- | Process an `EventlogProfileState` into an `EventlogProfile`.
+processEventlogProfileState ::
+  AggregationMode ->
+  EventlogProfileState ->
+  (EventlogProfile, [[EventlogError]])
+processEventlogProfileState aggregationMode st = (profile, st.processingErrors)
+ where
+  programName :: Text
+  programName = fromMaybe "" st.maybeProgramName
+
+  profile =
+    EventlogProfile
+      { programName = programName
+      , speedscopeFrames =
+          map snd . sortOn fst $
+            [ (stackFrameId, toSpeedscopeFrame stackFrame)
+            | (stackFrame, stackFrameId) <- Map.toList st.stackFrames
+            ]
+      , speedscopeProfiles =
+          toSpeedscopeProfiles programName st.samples aggregationMode
+      , programVersion = Text.pack $ "ghc-stack-profiler-speedscope@" ++ CURRENT_PACKAGE_VERSION
       }
 
-    logDecodingErrors prof = case profileProcessingErrors prof of
-      [] -> pure ()
-      errorStacks -> do
-        hPutStrLn stderr $ show (length errorStacks) ++ " CallStacks were decoded incompletely or not at all."
-        forM_ errorStacks $ \ stack -> do
-          let
-            size = length stack
-
-          forM_ (take 10 stack) $ \ err -> do
-            hPutStrLn stderr ("  " ++ prettyEventLogError err)
-
-          when (size > 10) $ do
-            hPutStrLn stderr ("  ... and " ++ show (size - 10) ++ " more." )
-
--- TODO: parsing of various src span formats
--- currently supported:
--- * filename.hs:1:1
--- * filename.hs:1-4:1
--- * filename.hs:1:1-4
--- * filename.hs:1-4:1-4 (this one doesn't mean anything)
---
--- missing:
--- * filename.hs:(154,1)-(155,32)
-tryParsingGhcSrcSpan :: Text -> (Maybe Text, Maybe Int, Maybe Int)
-tryParsingGhcSrcSpan srcSpan =
-  case Text.splitOn ":" srcSpan of
-    (fn:srcLoc) -> case srcLoc of
-      (rowSpan: columnSpan:_) ->
-        let
-          getStartOfSpan sp = case Text.splitOn "-" sp of
-            start:_ -> readAsNumber start
-            _ -> Nothing
-        in
-          (Just fn, getStartOfSpan rowSpan, getStartOfSpan columnSpan)
-      _ ->
-          (Just fn, Nothing, Nothing)
-    _ ->
-      (Nothing, Nothing, Nothing)
-  where
-    readAsNumber n = case Read.decimal n of
-      Left _ -> Nothing
-      Right (number, _) -> Just number
-
-processIpeEventsDefault :: InfoProvMap -> Event -> InfoProvMap
-processIpeEventsDefault provMap (Event _t ei _c) =
-  case ei of
-    InfoTableProv { itTableName, itClosureDesc, itTyDesc, itInfo, itLabel, itSrcLoc, itModule } ->
+-- | Pretty-print the eventlog processing errors.
+logEventlogErrors :: [[EventlogError]] -> IO ()
+logEventlogErrors = \case
+  [] -> pure ()
+  eventlogErrorStacks -> do
+    IO.hPutStrLn IO.stderr $ show (length eventlogErrorStacks) ++ " CallStacks were decoded incompletely or not at all."
+    for_ eventlogErrorStacks $ \eventlogErrorStack -> do
       let
-        key = InfoProvId itInfo
-        prov = InfoProv
-          { infoProvId = InfoProvId itInfo
-          , infoProvSrcLoc = itSrcLoc
-          , infoProvModule = itModule
-          , infoProvLabel = itLabel
-          , infoTableName = itTableName
-          , infoClosureDesc = itClosureDesc
-          , infoTyDesc = itTyDesc
-          }
-      in
-        IntMap.insert (word64ToInt $ coerce key) prov provMap
-    _ ->
-      provMap
+        size = length eventlogErrorStack
+      for_ (take 10 eventlogErrorStack) $ \err -> do
+        IO.hPutStrLn IO.stderr ("  " ++ prettyEventlogError err)
+      when (size > 10) $ do
+        IO.hPutStrLn IO.stderr ("  ... and " ++ show (size - 10) ++ " more.")
 
--- | Default processing function to convert profiling events into a classic speedscope
--- profile
-processEventsDefault :: EventLogProfileState -> Event -> EventLogProfileState
-processEventsDefault elProf (Event _t ei _c) =
-  case ei of
-    ProgramArgs _ (pname: _args) ->
-      elProf { eventlog_prog_name = Just pname }
-    RtsIdentifier _ rts_ident ->
-      elProf { rts_version = parseIdent rts_ident }
-    ProfBegin ival ->
-      elProf { prof_interval = Just ival }
-    UserBinaryMessage bs ->
-      case deserializeEventlogMessage $ LBS.fromStrict bs of
+-- | Proces an `Event` stream and update the `EventlogProfileState`.
+processEvents ::
+  DB.Table IP.InfoProvId IP.InfoProv ->
+  ProcessT IO E.Event EventlogProfileState
+processEvents infoProvTable =
+  autoT $
+    scanMealyTM (handleEvent infoProvTable) emptyEventlogProfileState
+
+-- | Handle an `Event` and update the `EventlogProfileState`.
+handleEvent ::
+  DB.Table IP.InfoProvId IP.InfoProv ->
+  EventlogProfileState ->
+  E.Event ->
+  IO EventlogProfileState
+handleEvent infoProvTable st ev =
+  case ev.evSpec of
+    E.ProgramArgs{args = programName : _} ->
+      pure st{maybeProgramName = Just programName}
+    E.RtsIdentifier{rtsident} ->
+      pure st{maybeRtsVersion = parseIdent rtsident}
+    E.UserBinaryMessage bs ->
+      case GSP.deserializeEventlogMessage $ BSL.fromStrict bs of
         Left _err ->
-          elProf
+          pure st
         Right evMsg -> case evMsg of
-          CallStackFinal msg ->
+          GSP.CallStackFinal msg -> do
             let
-              (callStackMessage, elProf1) =
-                hydrateBinaryEventlog elProf msg
-            in
-              addCallStackToProfile elProf1 callStackMessage
-
-          CallStackChunk msg ->
-            elProf { current_callstack_chunks = msg : current_callstack_chunks elProf }
-          StringDef msg ->
-            elProf { hydration_table = insertTextMessage msg (hydration_table elProf) }
-          SourceLocationDef msg ->
-            case insertSourceLocationMessage msg (hydration_table elProf) of
+              (callStackMessage, elProf1) = hydrateBinaryEventlog st msg
+            processCallStackMessage infoProvTable elProf1 callStackMessage
+          GSP.CallStackChunk msg ->
+            pure st{current_callstack_chunks = msg : current_callstack_chunks st}
+          GSP.StringDef msg ->
+            pure st{hydration_table = GSP.insertTextMessage msg (hydration_table st)}
+          GSP.SourceLocationDef msg ->
+            case GSP.insertSourceLocationMessage msg (hydration_table st) of
               Left err ->
-                addDecodingErrorsForStack [fromMissingKeyError err] elProf
-
+                pure $ addDecodingErrorsForStack [fromMissingKeyError err] st
               Right newTable ->
-                elProf { hydration_table = newTable }
+                pure st{hydration_table = newTable}
     _ ->
-      elProf
+      pure st
 
-addCallStackToProfile :: EventLogProfileState -> CallStackMessage -> EventLogProfileState
-addCallStackToProfile elProf MkCallStackMessage{callThreadId, callCapabilityId, callStack} =
+processCallStackMessage ::
+  DB.Table IP.InfoProvId IP.InfoProv ->
+  EventlogProfileState ->
+  GSP.CallStackMessage ->
+  IO EventlogProfileState
+processCallStackMessage infoProvTable st0 GSP.MkCallStackMessage{callThreadId, callCapabilityId, callStack} = do
+  stackFramesOrErrors <- traverse (toStackFrame infoProvTable) callStack
   let
-    (newProf, ccsOrError) = mapAccumR go elProf callStack
-    (errors, ccs) = partitionEithers ccsOrError
-    go prof csi =
-      swap $ lookupOrAddStackItemToProfile prof csi
-    sample = Sample
-      { sampleThreadId = callThreadId
-      , sampleCapabilityId = callCapabilityId
-      , sampleCostCentreStack =
-          -- TODO: Don't do the arbitrary cutoff, but reduce cycles.
-          -- And then do an arbitrary cutoff as speedscope has limits.
-          take 1000 $ reverse ccs
-      }
-  in
-    addDecodingErrorsForStack
-      errors
-      newProf
-        { el_samples = sample : el_samples newProf
+    (processingErrors, stackFrames) = partitionEithers stackFramesOrErrors
+    (st1, stackFrameIds) = mapAccumR processStackFrame st0 stackFrames
+    sample =
+      Sample
+        { sampleThreadId = callThreadId
+        , sampleCapabilityId = callCapabilityId
+        , -- TODO: Don't use an arbitrary cutoff, but reduce cycles within the stack.
+          -- TODO: Perform cycle reduction or cutoff before the database lookups.
+          sampleStack = take 1000 $ reverse stackFrameIds
         }
+    st2 = addDecodingErrorsForStack processingErrors st1
+  pure $ st2{samples = sample : st2.samples}
 
-hydrateBinaryEventlog :: EventLogProfileState -> BinaryCallStackMessage -> (CallStackMessage, EventLogProfileState)
-hydrateBinaryEventlog elProf msg =
+hydrateBinaryEventlog :: EventlogProfileState -> GSP.BinaryCallStackMessage -> (GSP.CallStackMessage, EventlogProfileState)
+hydrateBinaryEventlog st msg =
   let
-    chunks = current_callstack_chunks elProf
+    chunks = current_callstack_chunks st
     -- Why reverse?
     -- When decoding the stack, we walk the stack from the top down.
     -- Afterwards, the stack is chunked to fit into a single eventlog line,
@@ -408,184 +255,295 @@ hydrateBinaryEventlog elProf msg =
     --    [2,1] [4,3] [6,5]
     -- 4. 'catCallStackMessage' reverses the individual callstack chunks to be the inverse of 'chunkCallStackMessage'
     orderedChunks = NonEmpty.reverse $ msg :| chunks
-    fullBinaryCallStackMessage = catCallStackMessage orderedChunks
+    fullBinaryCallStackMessage = GSP.catCallStackMessage orderedChunks
     (callStackMessage, errs) =
-      hydrateEventlogCallStackMessage
-        (mkIntMapSymbolTableReader (hydration_table elProf))
+      GSP.hydrateEventlogCallStackMessage
+        (GSP.mkIntMapSymbolTableReader (hydration_table st))
         fullBinaryCallStackMessage
   in
     ( callStackMessage
     , addDecodingErrorsForStack
         (map fromBinaryError errs)
-        elProf { current_callstack_chunks = [] }
+        st{current_callstack_chunks = []}
     )
 
-lookupOrAddStackItemToProfile :: EventLogProfileState -> StackItem -> (Either EventLogError CostCentreId, EventLogProfileState)
-lookupOrAddStackItemToProfile elProf = \ case
-  IpeId iid -> do
-    case findInfoProv (info_prov_oracle elProf) iid of
-      Nothing ->
-        (Left $ UnknownIpeId iid, elProf)
-      Just prov ->
-        lookupOrInsertCostCentre (CostCentreIpe prov)
+-- | Convert a `StackItem` into a `StackFrame`.
+toStackFrame ::
+  DB.Table IP.InfoProvId IP.InfoProv ->
+  GSP.StackItem ->
+  IO (Either EventlogError StackFrame)
+toStackFrame infoProvTable = \case
+  GSP.IpeId (toInfoProvId -> infoProvId) -> do
+    maybeInfoProv <- DB.lookup infoProvTable infoProvId
+    pure $
+      case maybeInfoProv of
+        Nothing -> Left $! UnknownInfoProvId infoProvId
+        Just infoProv -> Right $! StackFrameInfoProv infoProv
+  GSP.UserAnnotation (Text.pack -> message) (toSrcLoc -> srcLoc) ->
+    pure . Right $! StackFrameMessage message srcLoc
 
-  UserAnnotation msg loc ->
-    lookupOrInsertCostCentre (CostCentreMessage (fromString msg) loc)
-
-  where
-    lookupOrInsertCostCentre userMessage =
-      case Map.lookup userMessage (user_cost_centres elProf) of
-        Just (cid, _) -> (Right cid, elProf)
-        Nothing ->
-          let
-            key = userMessage
-            cid = cost_centre_counter elProf
-          in
-            ( Right cid
-            , elProf
-              { cost_centre_counter = cid + 1
-              , user_cost_centres = Map.insert key (cid, key) (user_cost_centres elProf)
-              }
-            )
-
-isIpeInfoEvent :: EventInfo -> Bool
-isIpeInfoEvent InfoTableProv {}      = True
-isIpeInfoEvent _ = False
-
-isInfoEvent :: EventInfo -> Bool
-isInfoEvent ProgramArgs {}        = True
-isInfoEvent RtsIdentifier {}      = True
-isInfoEvent ProfBegin {}          = True
-isInfoEvent UserBinaryMessage {}  = True
-isInfoEvent _ = False
-
-mkProfile :: Text -> Word64 -> (Word64, [[Int]]) -> Profile
-mkProfile pname interval (n, samples) = SampledProfile sampledProfile
-  where
-    sampledProfile = MkSampledProfile
-      { unit       = Nanoseconds
-      , name       = pname <> " " <> Text.show n
-      , startValue = 0
-      , endValue   = length samples
-      , weights    = fromIntegral <$> sample_weights
-      , samples
-      }
-    sample_weights = replicate (length samples) interval
+-- | Ensure a `StackFrame` has a `StackFrameId` in the `EventlogProfileState`.
+processStackFrame ::
+  EventlogProfileState ->
+  StackFrame ->
+  (EventlogProfileState, StackFrameId)
+processStackFrame st stackFrame =
+  case Map.lookup stackFrame st.stackFrames of
+    Nothing ->
+      let
+        !stackFrameId = st.stackFrameCounter
+        !stackFrameCounter' = st.stackFrameCounter + 1
+        !stackFrames' = Map.insert stackFrame stackFrameId st.stackFrames
+        !st' = st{stackFrameCounter = stackFrameCounter', stackFrames = stackFrames'}
+      in
+        (st', stackFrameId)
+    Just stackFrameId -> (st, stackFrameId)
 
 parseIdent :: Text -> Maybe (Version, Text)
-parseIdent s = convert $ listToMaybe $ flip readP_to_S (Text.unpack s) $ do
-  void $ string "GHC-"
-  [v1, v2, v3] <- replicateM 3 (intP <* optional (char '.'))
-  skipSpaces
-  return $ makeVersion [v1,v2,v3]
-  where
-    intP = do
-      x <- munch1 isDigit
-      return $ read x
+parseIdent s = convert $ listToMaybe $ flip P.readP_to_S (Text.unpack s) $ do
+  void $ P.string "GHC-"
+  [v1, v2, v3] <- replicateM 3 (intP <* P.optional (P.char '.'))
+  P.skipSpaces
+  return $ makeVersion [v1, v2, v3]
+ where
+  intP = read <$> P.munch1 isDigit
+  convert x = (\(a, b) -> (a, Text.pack b)) <$> x
 
-    convert x = (\(a, b) -> (a, Text.pack b)) <$> x
-
-data EventLogProfile = EventLogProfile
-  { profileProgName :: Text
-  , profileFrames :: [Frame]
-  , profileProfiles :: [Profile]
-  , profileProgVersionString :: Text
-  , profileProcessingErrors :: [[EventLogError]]
+data EventlogProfile = EventlogProfile
+  { programName :: Text
+  , speedscopeFrames :: [Speedscope.Frame]
+  , speedscopeProfiles :: [Speedscope.Profile]
+  , programVersion :: Text
   }
 
 -- | The type we wish to convert event logs into
-data EventLogProfileState = EventLogProfileState
-  { eventlog_prog_name :: Maybe Text
-  , rts_version :: Maybe (Version, Text)
-  , prof_interval :: Maybe Word64
-  , info_prov_oracle :: InfoProvOracle
+data EventlogProfileState = EventlogProfileState
+  { maybeProgramName :: Maybe Text
+  , maybeRtsVersion :: Maybe (Version, Text)
   -- ^ Table of present 'InfoProv's in the eventlog
-  , user_cost_centres :: !(Map UserCostCentre (CostCentreId, UserCostCentre))
-  -- ^ All "cost centres" that are actually mentioned by `ghc-stack-profiler`.
-  , cost_centre_counter :: !CostCentreId
-  -- ^ Unique Counter for the 'Sample's
-  , el_samples :: [Sample]
+  , stackFrames :: !(Map StackFrame StackFrameId)
+  -- ^ All stack frames mentioned by @ghc-stack-profiler@.
+  , stackFrameCounter :: !StackFrameId
+  -- ^ A unique counter for stack frames.
+  , samples :: [Sample]
   -- ^ All samples in the reverse order of finding them in the eventlog.
-  , hydration_table :: !IntMapTable
+  , hydration_table :: !GSP.IntMapTable
   -- ^ The symbol table storing 'Text' and 'SourceLocation' symbols
   -- for hydrating a 'BinaryCallStackMessage' into a 'CallStackMessage'.
-  , current_callstack_chunks :: [BinaryCallStackMessage]
+  , current_callstack_chunks :: [GSP.BinaryCallStackMessage]
   -- ^ Chunks of 'BinaryCallStackMessage' we are currently decoding.
   -- All chunks are assumed to be from the same callstack and will be decoded once a
   -- 'CallStackFinal' message is encountered.
-  , decoding_errors :: [[EventLogError]]
+  , processingErrors :: [[EventlogError]]
   }
 
-addDecodingErrorsForStack :: [EventLogError] -> EventLogProfileState -> EventLogProfileState
-addDecodingErrorsForStack errs elProf =
-  if null errs
-    then
-      elProf
-    else
-      elProf
-        { decoding_errors = errs : decoding_errors elProf
-        }
+emptyEventlogProfileState :: EventlogProfileState
+emptyEventlogProfileState =
+  EventlogProfileState
+    { maybeProgramName = Nothing
+    , maybeRtsVersion = Nothing
+    , stackFrames = Map.empty
+    , stackFrameCounter = 0
+    , samples = []
+    , hydration_table = GSP.emptyIntMapTable
+    , current_callstack_chunks = []
+    , processingErrors = []
+    }
 
--- ----------------------------------------------------------------------------
+addDecodingErrorsForStack :: [EventlogError] -> EventlogProfileState -> EventlogProfileState
+addDecodingErrorsForStack errs elProf
+  | null errs = elProf
+  | otherwise = elProf{processingErrors = errs : processingErrors elProf}
+
+--------------------------------------------------------------------------------
 -- Decoding errors
--- ----------------------------------------------------------------------------
+--------------------------------------------------------------------------------
 
-data EventLogError
-  = UnknownIpeId IpeId
-  | UnknownStringId StringId
-  | UnknownSrcLocId SourceLocationId
-  | SourceLocationPartUndefined SourceLocationId StringId
+data EventlogError
+  = UnknownInfoProvId IP.InfoProvId
+  | UnknownStringId GSP.StringId
+  | UnknownSrcLocId GSP.SourceLocationId
+  | SourceLocationPartUndefined GSP.SourceLocationId GSP.StringId
   deriving (Show, Eq, Ord)
 
-fromBinaryError :: BinaryCallStackDecodeError -> EventLogError
-fromBinaryError = \ case
-  StringIdNotFound sid -> UnknownStringId sid
-  SourceLocationIdNotFound sid -> UnknownSrcLocId sid
+fromBinaryError :: GSP.BinaryCallStackDecodeError -> EventlogError
+fromBinaryError = \case
+  GSP.StringIdNotFound sid -> UnknownStringId sid
+  GSP.SourceLocationIdNotFound sid -> UnknownSrcLocId sid
 
-fromMissingKeyError :: MissingKeyError -> EventLogError
-fromMissingKeyError = \ case
-  KeyStringIdNotFound sourceLocId stringId -> SourceLocationPartUndefined sourceLocId stringId
+fromMissingKeyError :: GSP.MissingKeyError -> EventlogError
+fromMissingKeyError = \case
+  GSP.KeyStringIdNotFound sourceLocId stringId -> SourceLocationPartUndefined sourceLocId stringId
 
-prettyEventLogError :: EventLogError -> String
-prettyEventLogError = \ case
-  UnknownIpeId ipeId -> show $ UnknownIpeId ipeId
+prettyEventlogError :: EventlogError -> String
+prettyEventlogError = \case
+  UnknownInfoProvId ipeId -> show $ UnknownInfoProvId ipeId
   UnknownStringId sid -> show $ UnknownStringId sid
   UnknownSrcLocId sid -> show $ UnknownSrcLocId sid
   SourceLocationPartUndefined srcLocId stringId ->
     "While decoding source location " ++ show srcLocId ++ ", failed to find string " ++ show stringId
 
--- ----------------------------------------------------------------------------
--- Oracle for Info Provs
--- ----------------------------------------------------------------------------
+--------------------------------------------------------------------------------
+-- Conversion to Speedscope Types
+--------------------------------------------------------------------------------
 
-newtype InfoProvOracle = InfoProvOracle
-  { findInfoProv :: IpeId -> Maybe InfoProv
-  }
+toSpeedscopeFile :: EventlogProfile -> Speedscope.File
+toSpeedscopeFile profile =
+  Speedscope.File
+    { shared = Speedscope.Shared{frames = speedscopeFrames profile}
+    , profiles = speedscopeProfiles profile
+    , name = Just profile.programName
+    , activeProfileIndex = Just 0
+    , exporter = Just $ programVersion profile
+    }
 
-oracleFromMap :: IntMap InfoProv -> InfoProvOracle
-oracleFromMap infoProvs = InfoProvOracle (\ipeId -> IntMap.lookup (idToInt ipeId) infoProvs)
+type SpeedscopeSample = (SpeedscopeSampleId, [SpeedscopeSampleStack])
+type SpeedscopeSampleId = Word64
+type SpeedscopeSampleStack = [Int]
 
-oracleFromInfoProvDb :: IpeDb.InfoProvDb -> InfoProvOracle
-oracleFromInfoProvDb infoProvDb = InfoProvOracle $ \ipeId -> do
-  ipedb_info_prov <- Unsafe.unsafePerformIO (IpeDb.lookupInfoProv infoProvDb (IpeDb.IpeId (getIpeId ipeId)))
-  pure $ toSpeedscopeInfoProv ipedb_info_prov
+toSpeedscopeProfiles :: Text -> [Sample] -> AggregationMode -> [Speedscope.Profile]
+toSpeedscopeProfiles programName samples aggregationMode =
+  toSpeedscopeProfile <$> speedscopeSamples
+ where
+  toSpeedscopeProfile :: SpeedscopeSample -> Speedscope.Profile
+  toSpeedscopeProfile (sampleId, sampleStack) =
+    Speedscope.SampledProfile
+      Speedscope.MkSampledProfile
+        { unit = Speedscope.Nanoseconds
+        , name = programName <> " " <> Text.show sampleId
+        , startValue = 0
+        , endValue = length samples
+        , weights = replicate (length samples) 1
+        , samples = sampleStack
+        }
 
--- ----------------------------------------------------------------------------
--- In-memory Info Prov DB
--- ----------------------------------------------------------------------------
+  speedscopeSamples :: [SpeedscopeSample]
+  speedscopeSamples =
+    case aggregationMode of
+      -- NOTE: groupSort is assumed to be stable
+      PerThread -> groupSort $ toThreadSample <$> reverse samples
+      PerCapability -> groupSort $ toCapabilitySample <$> reverse samples
+      NoAggregation -> [(1, toSingleProfileSample <$> reverse samples)]
+   where
+    toThreadSample :: Sample -> (Word64, [Int])
+    toThreadSample sample = (sample.sampleThreadId, toSingleProfileSample sample)
 
-type InfoProvMap = IntMap InfoProv
+    toCapabilitySample :: Sample -> (Word64, [Int])
+    toCapabilitySample sample = (coerce sample.sampleCapabilityId, toSingleProfileSample sample)
 
-parseIpeTraces
-  :: (Maybe Text, Maybe Text)
-  -> EventLog
-  -> IntMap InfoProv
-parseIpeTraces (is, ie) (EventLog _h (Data es)) =
-  info_provs
-  where
-    Identity info_provs =
-        foldlT processIpeEventsDefault initEL $
-            source es ~>
-            delimit isIpeInfoEvent (markers (is, ie))
+    toSingleProfileSample :: Sample -> [Int]
+    toSingleProfileSample sample = map (GSP.word64ToInt . coerce) sample.sampleStack
 
-    initEL = IntMap.empty
+toSpeedscopeFrame :: StackFrame -> Speedscope.Frame
+toSpeedscopeFrame = \case
+  StackFrameMessage message srcLoc ->
+    Speedscope.Frame
+      { name = message
+      , file = srcLocFile srcLoc
+      , col = srcLocColumn srcLoc
+      , line = srcLocLine srcLoc
+      }
+  StackFrameInfoProv ip ->
+    Speedscope.Frame
+      { name = ip.ipModule <> " " <> if Text.null ip.ipLabel then ip.ipName else ip.ipLabel
+      , file = srcLocFile ip.ipSrcLoc <|> Just ip.ipModule
+      , col = srcLocColumn ip.ipSrcLoc
+      , line = srcLocLine ip.ipSrcLoc
+      }
+
+--------------------------------------------------------------------------------
+-- Eventlog Processing
+--------------------------------------------------------------------------------
+
+-- | Stream a file as chunks.
+fromHandle :: IO.Handle -> M.SourceT IO BS.ByteString
+fromHandle h =
+  M.MachineT $ do
+    chunks <- liftIO (BSL.toChunks <$> BSL.hGetContents h)
+    M.runMachineT $ M.source chunks
+
+-- | Parse t`E.Event`s from a stream of `BS.ByteString` chunks.
+decodeEvents :: M.Process BS.ByteString E.Event
+decodeEvents = M.construct $ loop E.decodeEventLog
+ where
+  loop :: E.Decoder a -> M.PlanT (M.Is BS.ByteString) a m ()
+  loop E.Done{} = pure ()
+  loop (E.Consume k) = M.await >>= \chunk -> loop (k chunk)
+  loop (E.Produce a d') = M.yield a >> loop d'
+  loop (E.Error _ err) = error err
+
+-- | Delimit an `E.Event` stream using user markers and a `Moore` machine.
+delimit ::
+  (Monad m) =>
+  -- | Only emit events which pass this predicate
+  (E.EventInfo -> Bool) ->
+  -- | Only emit events when this 'Moore' process state is 'True'. The process
+  -- will be given the values of 'UserMarker's in the event log.
+  Moore Text Bool ->
+  ProcessT m E.Event E.Event
+delimit p =
+  construct . go
+ where
+  go :: (Monad m) => Moore Text Bool -> PlanT (Is E.Event) E.Event m ()
+  go mm@(Moore open step) =
+    await >>= \case
+      ev
+        -- on marker step the moore machine.
+        | E.UserMarker marker <- ev.evSpec
+        , mm'@(Moore open' _) <- step marker -> do
+            -- if current or next state is open, emit the marker.
+            when (open || open') $ yield ev
+            go mm'
+
+        -- for other events, emit if the state is open and predicate passes.
+        | otherwise -> do
+            when (open || p ev.evSpec) $ yield ev
+            go mm
+
+-- | A Moore machine whose state indicates which delimiting markers have been
+-- seen. If both markers are 'Nothing', then the state will always be 'True'.
+-- If the first marker is given, then the state will always be 'False' until a
+-- value which the marker is a prefix of is seen. If the second marker is given,
+-- then the state will always be 'False' after a value which the marker is a
+-- prefix of is seen.
+markers :: (Maybe Text, Maybe Text) -> Moore Text Bool
+markers (Nothing, Nothing) =
+  open
+ where
+  open = Moore True (const open)
+markers (Just s, Nothing) =
+  closedUntilOpen
+ where
+  closedUntilOpen =
+    Moore False $ \s' ->
+      if s `Text.isPrefixOf` s'
+        then
+          open
+        else
+          closedUntilOpen
+  open = Moore True (const open)
+markers (Nothing, Just e) =
+  openUntilClosed
+ where
+  openUntilClosed =
+    Moore True $ \e' ->
+      if e `Text.isPrefixOf` e'
+        then
+          closed
+        else
+          openUntilClosed
+  closed = Moore False (const closed)
+markers (Just s, Just e) =
+  closedUntilOpen
+ where
+  closedUntilOpen =
+    Moore False $ \s' ->
+      if s `Text.isPrefixOf` s'
+        then openUntilClosed
+        else closedUntilOpen
+  openUntilClosed =
+    Moore True $ \e' ->
+      if e `Text.isPrefixOf` e'
+        then closed
+        else openUntilClosed
+  closed = Moore False (const closed)
