@@ -1,9 +1,5 @@
-module Main where
+{-# LANGUAGE NoImplicitPrelude #-}
 
-import Control.Exception.Backtrace
-import GHC.Stack.Profiler.Speedscope
+module Main (main) where
 
-main :: IO ()
-main = do
-  setBacktraceMechanismState IPEBacktrace True
-  entry
+import GHC.Stack.Profiler.Speedscope (main)
