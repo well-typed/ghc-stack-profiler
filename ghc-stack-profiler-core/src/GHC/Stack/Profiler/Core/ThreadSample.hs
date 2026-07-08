@@ -47,6 +47,7 @@ import GHC.Stack.CloneStack (StackSnapshot)
 import GHC.Stack.Profiler.Core.Eventlog
 import GHC.Stack.Profiler.Core.SourceLocation
 import GHC.Stack.Profiler.Core.SymbolTable
+import GHC.Stack.Profiler.Core.Util (word16ToInt)
 
 -- ----------------------------------------------------------------------------
 -- Thread Sample
@@ -219,21 +220,26 @@ catCallStackMessage msgs =
 -- This means, for a stack @[1,2,3,4,5,6]@ and an assumed chunk size of 2,
 -- we produce @[[6,5],[4,3],[2,1]]@.
 chunkCallStackMessage :: BinaryCallStackMessage -> [BinaryEventlogMessage]
-chunkCallStackMessage msg0 =
+chunkCallStackMessage = chunkCallStackMessage_ callStackSizeLimit
+
+-- | Same as 'chunkCallStackMessage', but allows to set the chunking size in bytes.
+chunkCallStackMessage_ :: Word16 -> BinaryCallStackMessage -> [BinaryEventlogMessage]
+chunkCallStackMessage_ chunkLimit16 msg0 =
   let
+    chunkLimitInt = word16ToInt chunkLimit16
     items = binaryCallStack msg0
     chunked =
       let
         go (!size, curChunk, restChunk) item =
           let
-            !bytes = byteSizeOf item
+            !bytes = word16ToInt $ byteSizeOf item
           in
-            if size + bytes > callStackSizeLimit
-              then (0, [item], curChunk : restChunk)
-              else (size + bytes, item:curChunk, restChunk)
+            if (size + bytes) < chunkLimitInt
+              then (size + bytes, item : curChunk, restChunk)
+              else (bytes, [item], curChunk : restChunk)
         (_, lastChunk, initChunk) = List.foldl' go (0, [], []) items
       in
-        lastChunk:initChunk
+        lastChunk : initChunk
   in
     mkEventlogMessages chunked
  where
