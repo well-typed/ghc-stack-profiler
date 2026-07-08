@@ -18,6 +18,7 @@ module GHC.Stack.Profiler.Core.ThreadSample (
   hydrateEventlogCallStackMessage,
   catCallStackMessage,
   chunkCallStackMessage,
+  chunkCallStackMessage_,
 
   -- * Message dehydration helpers
   EncodingState,
@@ -171,16 +172,18 @@ hydrateEventlogCallStackMessage decodeTable msg =
       BinaryIpe ipeId ->
         Right $ IpeId ipeId
       BinaryMessage stringId mSrcLocId -> do
-        str <- maybe
-          (Left $ StringIdNotFound stringId)
-          (Right . Text.unpack)
-          (lookupStringId decodeTable stringId)
+        str <-
+          maybe
+            (Left $ StringIdNotFound stringId)
+            (Right . Text.unpack)
+            (lookupStringId decodeTable stringId)
         srcLoc <- case mSrcLocId of
           Nothing -> pure Nothing
-          Just srcLocId -> maybe
-            (Left $ SourceLocationIdNotFound srcLocId)
-            (Right . Just)
-            (lookupSourceLocationId decodeTable srcLocId)
+          Just srcLocId ->
+            maybe
+              (Left $ SourceLocationIdNotFound srcLocId)
+              (Right . Just)
+              (lookupSourceLocationId decodeTable srcLocId)
         pure $ UserAnnotation str srcLoc
 
     itemsOrErros = map decodeItem (binaryCallStack msg)

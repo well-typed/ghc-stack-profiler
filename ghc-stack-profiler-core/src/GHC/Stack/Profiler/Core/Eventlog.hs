@@ -19,6 +19,7 @@ module GHC.Stack.Profiler.Core.Eventlog (
   callStackSourceLocationMessageTag,
   callStackMessageTags,
   callStackSizeLimit,
+  callStackSizeLimit_,
   byteSizeOf,
   eventlogBufferSize,
   stringLengthLimit,
@@ -66,20 +67,20 @@ data BinaryEventlogMessage
   | CallStackChunk !BinaryCallStackMessage
   | StringDef !BinaryStringMessage
   | SourceLocationDef !BinarySourceLocationMessage
-  deriving (Eq, Ord, Show, Generic)
+  deriving (Eq, Ord, Show, Read, Generic)
 
 data BinaryCallStackMessage = MkBinaryCallStackMessage
   { binaryCallThreadId :: !Word64
   , binaryCallCapabilityId :: !CapabilityId
   , binaryCallStack :: ![BinaryStackItem]
   }
-  deriving (Eq, Ord, Show, Generic)
+  deriving (Eq, Ord, Show, Read, Generic)
 
 data BinaryStringMessage = MkBinaryStringMessage
   { binaryStringMessageId :: !StringId
   , binaryStringMessage :: !Text
   }
-  deriving (Eq, Ord, Show, Generic)
+  deriving (Eq, Ord, Show, Read, Generic)
 
 data BinarySourceLocationMessage = MkBinarySourceLocationMessage
   { binarySourceLocationMessageId :: {-# UNPACK #-} !SourceLocationId
@@ -87,26 +88,26 @@ data BinarySourceLocationMessage = MkBinarySourceLocationMessage
   , binarySourceLocationColumn :: {-# UNPACK #-} !Word32
   , binarySourceLocationFilename :: {-# UNPACK #-} !StringId
   }
-  deriving (Eq, Ord, Show, Generic)
+  deriving (Eq, Ord, Show, Read, Generic)
 
 data BinaryStackItem
   = BinaryIpe {-# UNPACK #-} !IpeId
   | BinaryMessage
       {-# UNPACK #-} !StringId
       {-# UNPACK #-} !(Maybe SourceLocationId)
-  deriving (Eq, Ord, Show, Generic)
+  deriving (Eq, Ord, Show, Read, Generic)
 
 -- | Simple newtype for the ID of a capability.
 newtype CapabilityId
   = MkCapabilityId
   { getCapabilityId :: Word64
   }
-  deriving (Show, Eq, Ord, Generic)
+  deriving (Show, Eq, Ord, Read, Generic)
 
 newtype StringId = MkStringId
   { getStringId :: Word64
   }
-  deriving (Eq, Ord, Show, Generic)
+  deriving (Eq, Ord, Show, Read, Generic)
 
 incrementStringLocationId :: StringId -> StringId
 incrementStringLocationId (MkStringId sid) = MkStringId (sid + 1)
@@ -114,7 +115,7 @@ incrementStringLocationId (MkStringId sid) = MkStringId (sid + 1)
 newtype SourceLocationId = MkSourceLocationId
   { getSourceLocationId :: Word64
   }
-  deriving (Eq, Ord, Show, Generic)
+  deriving (Eq, Ord, Show, Read, Generic)
 
 incrementSourceLocationId :: SourceLocationId -> SourceLocationId
 incrementSourceLocationId (MkSourceLocationId slId) = MkSourceLocationId (slId + 1)
@@ -122,7 +123,7 @@ incrementSourceLocationId (MkSourceLocationId slId) = MkSourceLocationId (slId +
 newtype IpeId = MkIpeId
   { getIpeId :: Word64
   }
-  deriving (Eq, Ord, Show, Generic)
+  deriving (Eq, Ord, Show, Read, Generic)
 
 -- ----------------------------------------------------------------------------
 -- Binary instances
@@ -161,10 +162,17 @@ stringLengthLimit =
       - 8 {- Word64 of 'StringId' -}
       - 2 {- Word16 for the length of the string to serialise -}
 
+-- | The limit of stack items that can go in one eventlog message in bytes.
 callStackSizeLimit :: Word16
 callStackSizeLimit =
+  callStackSizeLimit_ eventlogBufferSize
+
+-- | The limit of stack items that can go in one eventlog message in bytes
+-- with configurable the eventlog message size.
+callStackSizeLimit_ :: Word64 -> Word16
+callStackSizeLimit_ eventlogSize =
   word64ToWord16
-    ( eventlogBufferSize
+    ( eventlogSize
         - 2 {- 0xFFCA or 0xFFCB -}
         - 4 {- Word32 of 'CapabilityId' -}
         - 4 {- Word32 of 'ThreadId' -}
@@ -173,10 +181,10 @@ callStackSizeLimit =
 
 -- | Size in bytes of the given 'BinaryStackItem'
 byteSizeOf :: BinaryStackItem -> Word16
-byteSizeOf = \ case
-  BinaryIpe{} -> 9
-  BinaryMessage _ Nothing -> 9
-  BinaryMessage _ (Just _) -> 17
+byteSizeOf = \case
+  BinaryIpe{} -> 1 + 8 {- 0x1 + Word64 of 'IpeId' -}
+  BinaryMessage _ Nothing -> 1 + 8 {- 0x2 + Word64 of 'StringId' -}
+  BinaryMessage _ (Just _) -> 1 + 8 + 8 {- 0x3 + Word64 of 'StringId' + Word64 of 'SourceLocationId' -}
 
 instance Binary BinaryEventlogMessage where
   put = \case
