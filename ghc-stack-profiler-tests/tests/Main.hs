@@ -107,7 +107,7 @@ test_oddball_ControlCallStackProfiling =
         { name = "oddball"
         , args = []
         , rtsopts = ["-l-au", "--eventlog-flush-interval=1"]
-        , buildFlags = ["--constraint=eventlog-socket+control","--constraint=ghc-stack-profiler+control"]
+        , buildFlags = ["--constraint=eventlog-socket+control", "--constraint=ghc-stack-profiler+control"]
         }
   in
     programTestFor "test_oddball_ControlCallStackProfiling" oddball $ \eventlogSocket -> do
