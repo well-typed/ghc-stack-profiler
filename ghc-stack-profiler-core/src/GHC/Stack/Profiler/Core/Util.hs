@@ -20,7 +20,7 @@ module GHC.Stack.Profiler.Core.Util (
   word16ToInt,
   intToWord8,
   word8ToInt,
-  ) where
+) where
 
 import Control.Monad (replicateM)
 import Data.Binary
