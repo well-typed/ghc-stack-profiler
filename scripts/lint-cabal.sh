@@ -33,7 +33,7 @@ echo
 FAIL=$(mktemp)
 
 # shellcheck disable=SC2046
-set -- $(git ls-files --exclude-standard --no-deleted --deduplicate '*.cabal')
+set -- $(git ls-files --exclude-standard --no-deleted --deduplicate '*.cabal' | grep -v 'examples/\|ghc-stack-profiler-tests/')
 
 CWD="$(pwd)"
 for PACKAGE_CABAL_FILE; do
