@@ -1,26 +1,21 @@
-{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE TypeApplications #-}
 
 module Main (main) where
 
-import Test.Tasty
-
-import Control.Exception.Backtrace
 import qualified Data.Binary as B
 import Data.ByteString (ByteString)
 import qualified Data.ByteString.Lazy as BSL (fromStrict)
 import Data.Either (isRight)
 import Data.Machine ((~>))
 import qualified Data.Machine as M
-import Data.Maybe
+import Data.Maybe (fromMaybe)
 import qualified Data.Text as T
 import qualified GHC.Eventlog.Socket.Control as C
 import GHC.Eventlog.Socket.Test (
-  EventlogSocketAddr (EventlogSocketInetAddr, EventlogSocketUnixAddr),
+  EventlogSocketAddr (..),
   HasLogger,
   HasTestInfo,
-  Program (Program, args, buildFlags, name, rtsopts),
+  Program (..),
   ProgramTest,
   allOf,
   anyOf,
@@ -41,14 +36,14 @@ import GHC.Stack.Profiler.Core.Eventlog (BinaryEventlogMessage)
 import System.Environment (lookupEnv)
 import System.FilePath
 import System.IO.Temp (withTempDirectory)
+import Test.Tasty (defaultIngredients, defaultMainWithIngredients, includingOptions, testGroup)
 import Text.Printf (printf)
 import Text.Read (readMaybe)
 
 main :: IO ()
 main = do
-  setBacktraceMechanismState IPEBacktrace True
   -- Allow the user to overwrite the TCP port:
-  tcpPort <- (fromMaybe "4242" . (readMaybe =<<)) <$> lookupEnv "GHC_EVENTLOG_INET_PORT"
+  tcpPort <- fromMaybe "4242" . (readMaybe =<<) <$> lookupEnv "GHC_EVENTLOG_INET_PORT"
 
   -- Create list of tasty ingredients:
   let
