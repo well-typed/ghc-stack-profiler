@@ -48,4 +48,3 @@ fixities: []
 
 # Module reexports Fourmolu should know about
 reexports: []
-
