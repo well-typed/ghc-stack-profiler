@@ -32,4 +32,5 @@ test-suite ghc-stack-profiler-tests
     tasty,
     temporary,
     text,
+
   ghc-options: -threaded

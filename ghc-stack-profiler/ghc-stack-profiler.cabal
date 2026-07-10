@@ -17,8 +17,8 @@ description:
   import GHC.Stack.Profiler
 
   main :: IO ()
-  main = 
-    'withRootStackProfiler' True $ \ manager -> 
+  main =
+    'withRootStackProfiler' True $ \ manager ->
       'withStackProfilerForMyThread' manager ('SampleIntervalMs' 10) $ do
         ...
   @
