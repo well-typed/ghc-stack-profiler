@@ -12,6 +12,12 @@ if impl(ghc >=9.14)
     ghc-bignum,
     containers,
 
+if impl(ghc >=10)
+  allow-newer:
+    ghc-prim,
+  constraints:
+    hashable ==1.4.7.0,
+
 -- 2026-05-04:
 -- The eventlog-socket package does not support Windows.
 if !os(windows)
