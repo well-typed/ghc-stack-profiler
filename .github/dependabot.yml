@@ -5,3 +5,24 @@ updates:
     directory: "/"
     schedule:
       interval: "daily"
+
+  # Maintain dependencies for local actions
+  - package-ecosystem: "github-actions"
+    directory: ".github/actions/setup-actionlint"
+    schedule:
+      interval: "daily"
+
+  - package-ecosystem: "github-actions"
+    directory: ".github/actions/setup-cabal-gild"
+    schedule:
+      interval: "daily"
+
+  - package-ecosystem: "github-actions"
+    directory: ".github/actions/setup-fourmolu"
+    schedule:
+      interval: "daily"
+
+  - package-ecosystem: "github-actions"
+    directory: ".github/actions/setup-shellcheck"
+    schedule:
+      interval: "daily"
