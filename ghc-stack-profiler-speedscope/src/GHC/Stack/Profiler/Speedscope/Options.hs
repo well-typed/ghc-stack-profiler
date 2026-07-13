@@ -158,7 +158,7 @@ data IpeDBOpts = IpeDBOpts
 
 ipeDBOptsParser :: O.Parser IpeDBOpts
 ipeDBOptsParser =
-  IpeDBOpts <$> ipeDBParser <*> (fromMaybe def <$> ipeDBFormatParser)
+  IpeDBOpts <$> ipeDBParser <*> (fromMaybe def <$> O.optional ipeDBFormatParser)
 
 ipeDBParser :: O.Parser FilePath
 ipeDBParser =
@@ -169,7 +169,7 @@ ipeDBParser =
         <> O.help "The path to the IpeDB database."
     )
 
-ipeDBFormatParser :: O.Parser (Maybe DB.TableFormat)
+ipeDBFormatParser :: O.Parser DB.TableFormat
 ipeDBFormatParser =
   O.option (O.eitherReader readIpeDBFormat) . mconcat $
     [ O.short 't'
@@ -179,9 +179,9 @@ ipeDBFormatParser =
     , O.help "The IpeDB table format (lsm, tar, tgz)."
     ]
 
-readIpeDBFormat :: String -> Either String (Maybe DB.TableFormat)
+readIpeDBFormat :: String -> Either String DB.TableFormat
 readIpeDBFormat = \case
-  "lsm" -> Right (Just DB.LSMTreeSnapshotV2)
-  "tar" -> Right (Just DB.LSMTreeSnapshotV2Tar)
-  "tgz" -> Right (Just DB.LSMTreeSnapshotV2TarGz)
+  "lsm" -> Right DB.LSMTreeSnapshotV2
+  "tar" -> Right DB.LSMTreeSnapshotV2Tar
+  "tgz" -> Right DB.LSMTreeSnapshotV2TarGz
   tableFormatString -> Left $! "Unknown table format " <> tableFormatString
