@@ -23,7 +23,6 @@ common warnings
 
 common exts
   default-extensions:
-    AllowAmbiguousTypes
     DeriveGeneric
     DerivingStrategies
     DuplicateRecordFields
