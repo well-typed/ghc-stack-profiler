@@ -104,8 +104,7 @@ jobs:
             ghc-version: "9.10.3"
           - os: "ubuntu-latest"
             ghc-version: "9.8.4"
-
-          # Test older GHC versions only supported by ghc-stack-profiler-core
+            cabal-flags: "--project-file=cabal.only-core.project"
           - os: "ubuntu-latest"
             ghc-version: "9.6.7"
             cabal-flags: "--project-file=cabal.only-core.project"
