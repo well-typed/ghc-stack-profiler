@@ -49,6 +49,7 @@ jobs:
         uses: haskell-actions/setup@v2
         with:
           ghc-version: ${{ matrix.ghc-version }}
+          ghcup-release-channel: ${{ matrix.ghcup-release-channel }}
 
       - name: 🗄️ Generate Cabal plan
         run: cabal build all ${{ matrix.cabal-flags }} --dry-run
@@ -92,16 +93,26 @@ jobs:
           # Default configuration flags
           - cabal-flags: ""
 
+          # Default GHCup release channel
+          - ghcup-release-channel: ""
+
           # Test build without use-ghc-trace-events
           - os: "ubuntu-latest"
             ghc-version: "9.12.4"
             cabal-flags: "-f-use-ghc-trace-events"
+
+          # Test nightly GHC versions
+          - os: "ubuntu-latest"
+            ghc-version: "10.1.20260701"
+            ghcup-release-channel: "https://gitlab.haskell.org/ghc/ghcup-metadata/-/raw/updates/ghcup-nightlies-0.0.7.yaml"
 
           # Test older GHC versions
           - os: "ubuntu-latest"
             ghc-version: "9.12.4"
           - os: "ubuntu-latest"
             ghc-version: "9.10.3"
+
+          # Test older GHC versions only supported by ghc-stack-profiler-core
           - os: "ubuntu-latest"
             ghc-version: "9.8.4"
             cabal-flags: "--project-file=cabal.only-core.project"
