@@ -2,7 +2,9 @@
 
 ## 0.4.0.0 -- 2026-07-14
 
-No changes. Version changed to match `ghc-stack-profiler-speedscope`.
+Major version number changed to match `ghc-stack-profiler-speedscope`.
+
+No changes.
 
 ## 0.3.0.0 -- 2026-06-23
 
