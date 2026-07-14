@@ -1,5 +1,9 @@
 # Revision history for ghc-stack-profiler-core
 
+## 0.4.0.0 -- 2026-07-14
+
+No changes. Version changed to match `ghc-stack-profiler-speedscope`.
+
 ## 0.3.0.0 -- 2026-06-23
 
 - Support GHC 9.4, 9.6 and 9.8 for ghc-stack-profiler-core [#30](https://github.com/well-typed/ghc-stack-profiler/pull/30)
