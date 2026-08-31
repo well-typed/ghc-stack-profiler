@@ -248,7 +248,7 @@ emptyMapSymbolTableWriter =
     ( srcLocUniqueSupply tbl
     , tbl
         { srcLocUniqueSupply =
-            incrementSourceLocationId $ srcLocUniqueSupply tbl
+            nextSourceLocationId $ srcLocUniqueSupply tbl
         }
     )
 
@@ -256,7 +256,7 @@ emptyMapSymbolTableWriter =
     ( stringUniqueSupply tbl
     , tbl
         { stringUniqueSupply =
-            incrementStringLocationId $ stringUniqueSupply tbl
+            nextStringId $ stringUniqueSupply tbl
         }
     )
 
