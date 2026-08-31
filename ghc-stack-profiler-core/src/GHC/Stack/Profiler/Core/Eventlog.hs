@@ -8,9 +8,9 @@ module GHC.Stack.Profiler.Core.Eventlog (
   ThreadId (..),
   CapabilityId (..),
   StringId (..),
-  incrementStringLocationId,
+  nextStringId,
   SourceLocationId (..),
-  incrementSourceLocationId,
+  nextSourceLocationId,
   IpeId (..),
   deserializeEventlogMessage,
   joinCallStackChunks,
@@ -139,16 +139,16 @@ newtype StringId = MkStringId
   }
   deriving (Eq, Ord, Show, Read, Generic)
 
-incrementStringLocationId :: StringId -> StringId
-incrementStringLocationId (MkStringId sid) = MkStringId (sid + 1)
+nextStringId :: StringId -> StringId
+nextStringId (MkStringId sid) = MkStringId (sid + 1)
 
 newtype SourceLocationId = MkSourceLocationId
   { getSourceLocationId :: Word64
   }
   deriving (Eq, Ord, Show, Read, Generic)
 
-incrementSourceLocationId :: SourceLocationId -> SourceLocationId
-incrementSourceLocationId (MkSourceLocationId slId) = MkSourceLocationId (slId + 1)
+nextSourceLocationId :: SourceLocationId -> SourceLocationId
+nextSourceLocationId (MkSourceLocationId slId) = MkSourceLocationId (slId + 1)
 
 newtype IpeId = MkIpeId
   { getIpeId :: Word64
