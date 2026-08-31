@@ -1,7 +1,7 @@
 module GHC.Stack.Profiler.Core.Eventlog (
   -- * Eventlgog Message types
   Message (..),
-  BinaryCallStackMessage (..),
+  CallStackChunk (..),
   BinaryStringMessage (..),
   BinarySourceLocationMessage (..),
   BinaryStackItem (..),
@@ -75,11 +75,11 @@ data Message
   = -- | A chunk of the call-stack, indicated by the prefix @FF CA@.
     --
     --   This variant indicates that no further 'CallStackChunk' or 'CallStackFinal' will follow.
-    CallStackFinal !BinaryCallStackMessage
+    CallStackFinal !CallStackChunk
   | -- | A chunk of the call-stack, indicated by the prefix @FF CB@.
     --
     --   This variant indicates that another 'CallStackChunk' or 'CallStackFinal' will follow.
-    CallStackChunk !BinaryCallStackMessage
+    CallStackChunk !CallStackChunk
   | -- | A string definition, indicated by the prefix @FF CC@.
     --
     --   This messages associates the string ID @strId@ with the string
@@ -94,10 +94,10 @@ data Message
     SourceLocationDef !BinarySourceLocationMessage
   deriving (Eq, Ord, Show, Read, Generic)
 
-data BinaryCallStackMessage = MkBinaryCallStackMessage
-  { binaryCallThreadId :: !ThreadId
-  , binaryCallCapabilityId :: !CapabilityId
-  , binaryCallStack :: ![BinaryStackItem]
+data CallStackChunk = MkCallStackChunk
+  { callStackChunkThreadId :: !ThreadId
+  , callStackChunkCapabilityId :: !CapabilityId
+  , callStackChunk :: ![BinaryStackItem]
   }
   deriving (Eq, Ord, Show, Read, Generic)
 
@@ -162,16 +162,16 @@ deserializeEventlogMessage msg = case runGetOrFail get msg of
   Left (_, _, errMsg) -> Left errMsg
   Right (_, _, callStackMessage) -> Right callStackMessage
 
--- | Combine all 'BinaryCallStackMessage's into a single 'BinaryCallStackMessage'.
--- We assume that all 'BinaryCallStackMessage' only differ in their 'binaryCallStack' values.
+-- | Combine all 'CallStackChunk's into a single 'CallStackChunk'.
+-- We assume that all 'CallStackChunk' only differ in their 'callStackChunk' values.
 --
 -- 'catCallStackMessage' is the conceptually inverse of 'chunkCallStackMessage'.
-catCallStackMessage :: NonEmpty BinaryCallStackMessage -> BinaryCallStackMessage
+catCallStackMessage :: NonEmpty CallStackChunk -> CallStackChunk
 catCallStackMessage msgs =
-  MkBinaryCallStackMessage
-    { binaryCallThreadId = binaryCallThreadId $ NonEmpty.head msgs
-    , binaryCallCapabilityId = binaryCallCapabilityId $ NonEmpty.head msgs
-    , binaryCallStack = concatMap (reverse . binaryCallStack) . reverse $ NonEmpty.toList msgs
+  MkCallStackChunk
+    { callStackChunkThreadId = callStackChunkThreadId $ NonEmpty.head msgs
+    , callStackChunkCapabilityId = callStackChunkCapabilityId $ NonEmpty.head msgs
+    , callStackChunk = concatMap (reverse . callStackChunk) . reverse $ NonEmpty.toList msgs
     }
 
 -- ----------------------------------------------------------------------------
@@ -269,13 +269,13 @@ instance Binary Message where
    where
     tags = List.intercalate ", " $ map showAsHex callStackMessageTags
 
-instance Binary BinaryCallStackMessage where
+instance Binary CallStackChunk where
   put msg = do
-    putWord32 . fromIntegral . getCapabilityId $ binaryCallCapabilityId msg
-    putWord32 . fromIntegral . getThreadId $ binaryCallThreadId msg
+    putWord32 . fromIntegral . getCapabilityId $ callStackChunkCapabilityId msg
+    putWord32 . fromIntegral . getThreadId $ callStackChunkThreadId msg
     -- TODO: This _should be_ a Word64.
     let
-      items = binaryCallStack msg
+      items = callStackChunk msg
     putWord16 $ intToWord16 $ length items
     mapM_ put items
 
@@ -285,10 +285,10 @@ instance Binary BinaryCallStackMessage where
     len <- getWord16
     items <- replicateM (word16ToInt len) get
     pure
-      MkBinaryCallStackMessage
-        { binaryCallThreadId = MkThreadId . fromIntegral $ tid
-        , binaryCallCapabilityId = MkCapabilityId . fromIntegral $ capId
-        , binaryCallStack = items
+      MkCallStackChunk
+        { callStackChunkThreadId = MkThreadId . fromIntegral $ tid
+        , callStackChunkCapabilityId = MkCapabilityId . fromIntegral $ capId
+        , callStackChunk = items
         }
 
 instance Binary BinaryStackItem where

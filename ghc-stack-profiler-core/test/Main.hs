@@ -66,7 +66,7 @@ properties =
       conjoin $
         map (eventlogMessageSmallerThanStackSizeLimit_prop (fromIntegral eventlogSize)) msgs
 
-  eventlogMessageSmallerThanStackSizeLimit_prop :: Word -> BinaryCallStackMessage -> Property
+  eventlogMessageSmallerThanStackSizeLimit_prop :: Word -> CallStackChunk -> Property
   eventlogMessageSmallerThanStackSizeLimit_prop eventlogLimit chunk =
     let
       -- We need either 'CallStackFinal' or 'CallStackChunk' to add the leading '0xFFCA' or '0xFFCB'.
@@ -82,9 +82,9 @@ withEventlogSizeGen k =
   -- The largest stack item is 17 bytes.
   forAll (choose (29, 1000)) k
 
-instance Arbitrary BinaryCallStackMessage where
+instance Arbitrary CallStackChunk where
   arbitrary =
-    MkBinaryCallStackMessage <$> arbitrary <*> arbitrary <*> arbitrary
+    MkCallStackChunk <$> arbitrary <*> arbitrary <*> arbitrary
 
 instance Arbitrary ThreadId where
   arbitrary =
