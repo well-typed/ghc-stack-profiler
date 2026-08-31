@@ -126,8 +126,7 @@ newtype ThreadId
 -- | The ID of a capability.
 newtype CapabilityId
   = MkCapabilityId
-  { getCapabilityId :: Word64
-  -- TODO: This _should be_ an Int.
+  { getCapabilityId :: Int
   }
   deriving (Show, Eq, Ord, Read, Generic)
 
@@ -254,7 +253,7 @@ instance Binary BinaryEventlogMessage where
 
 instance Binary BinaryCallStackMessage where
   put msg = do
-    putWord32 . word64ToWord32 $ getCapabilityId $ binaryCallCapabilityId msg
+    putWord32 . fromIntegral . getCapabilityId $ binaryCallCapabilityId msg
     putWord32 . fromIntegral . getThreadId $ binaryCallThreadId msg
     -- TODO: This _should be_ a Word64.
     let
@@ -270,7 +269,7 @@ instance Binary BinaryCallStackMessage where
     pure
       MkBinaryCallStackMessage
         { binaryCallThreadId = MkThreadId . fromIntegral $ tid
-        , binaryCallCapabilityId = MkCapabilityId $ word32ToWord64 capId
+        , binaryCallCapabilityId = MkCapabilityId . fromIntegral $ capId
         , binaryCallStack = items
         }
 

@@ -426,7 +426,7 @@ toSpeedscopeProfiles programName samples aggregationMode =
     toThreadSample sample = (fromIntegral . sampleThreadId $ sample, toSingleProfileSample sample)
 
     toCapabilitySample :: Sample -> (Word64, [Int])
-    toCapabilitySample sample = (coerce sample.sampleCapabilityId, toSingleProfileSample sample)
+    toCapabilitySample sample = (fromIntegral . GSPC.getCapabilityId $ sample.sampleCapabilityId, toSingleProfileSample sample)
 
     toSingleProfileSample :: Sample -> [Int]
     toSingleProfileSample sample = map (fromIntegral @Word64 @Int . coerce) sample.sampleStack
