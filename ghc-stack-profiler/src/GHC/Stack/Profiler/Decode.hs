@@ -50,7 +50,7 @@ threadSampleToCallStackMessage sample = do
       , callStack = callStackItems
       }
 
-serializeCallStackMessage :: StackSymbolTable -> CallStack -> STM [BinaryEventlogMessage]
+serializeCallStackMessage :: StackSymbolTable -> CallStack -> STM [Message]
 serializeCallStackMessage tableRef callStackMessage = do
   table <- readSymbolTable tableRef
   let
@@ -58,10 +58,10 @@ serializeCallStackMessage tableRef callStackMessage = do
   writeSymbolTable newTable tableRef
   pure eventlogMessages
 
-serializeBinaryEventlogMessage :: BinaryEventlogMessage -> LBS.ByteString
+serializeBinaryEventlogMessage :: Message -> LBS.ByteString
 serializeBinaryEventlogMessage = runPut . put
 
-serializeBinaryEventlogMessages :: [BinaryEventlogMessage] -> [LBS.ByteString]
+serializeBinaryEventlogMessages :: [Message] -> [LBS.ByteString]
 serializeBinaryEventlogMessages = map serializeBinaryEventlogMessage
 
 initMessages :: SymbolTableWriter MapTable -> [LBS.ByteString]

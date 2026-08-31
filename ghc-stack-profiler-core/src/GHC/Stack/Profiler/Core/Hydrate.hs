@@ -59,7 +59,7 @@ hydrateEventlogCallStackMessage decodeTable msg =
     )
 
 -- | Implementation agnostic symbol table reader helping consumers to decode
--- 'BinaryEventlogMessage's into a 'CallStack'.
+-- 'Message's into a 'CallStack'.
 --
 -- As during deserialisation, we do not discover new Messages, the abstract 'SymbolTableReader'
 -- doesn't need to thread the implementation through the lookup operations.

@@ -15,7 +15,7 @@ import GHC.Stack.Profiler.Core.CallStack
 import GHC.Stack.Profiler.Core.Eventlog
 import GHC.Stack.Profiler.Core.Util
 
--- | Generic implementation to turn 'CallStack' into '[BinaryEventlogMessage]'.
+-- | Generic implementation to turn 'CallStack' into '[Message]'.
 --
 -- Replaces already encountered text or source location information with unique ids.
 -- If new text or source location messages are encountered, they are inserted into
@@ -23,7 +23,7 @@ import GHC.Stack.Profiler.Core.Util
 --
 -- All new string values and source location messages are before 'CallStackChunk' and
 -- 'CallStackFinal' messages.
--- For the result list @r :: ['BinaryEventlogMessage']@, the following holds:
+-- For the result list @r :: ['Message']@, the following holds:
 --
 -- * 'StringDef' messages are the first elements in @r@. There might not be any.
 -- * 'SourceLocationDef' are after 'StringDef' messages and before any 'CallStackChunk' or
@@ -34,7 +34,7 @@ dehydrateCallStackMessage ::
   forall table.
   SymbolTableWriter table ->
   CallStack ->
-  ([BinaryEventlogMessage], SymbolTableWriter table)
+  ([Message], SymbolTableWriter table)
 dehydrateCallStackMessage msgTbl0 msg =
   let
     (stackItems, finalState) =
@@ -77,17 +77,17 @@ dehydrateCallStackMessage msgTbl0 msg =
 -- Post-condition for the result @r@:
 --
 -- * all elements in @init r @ are 'CallStackChunk's
--- * the element returned by @last r@ is a 'CallStackFinal' BinaryEventlogMessage.
+-- * the element returned by @last r@ is a 'CallStackFinal' Message.
 --
 -- The resulting 'CallStackChunk' are in reverse order and so are the chunks themselves.
 --
 -- This means, for a stack @[1,2,3,4,5,6]@ and an assumed chunk size of 2,
 -- we produce @[[6,5],[4,3],[2,1]]@.
-chunkCallStackMessage :: BinaryCallStackMessage -> [BinaryEventlogMessage]
+chunkCallStackMessage :: BinaryCallStackMessage -> [Message]
 chunkCallStackMessage = chunkCallStackMessage_ callStackSizeLimit
 
 -- | Same as 'chunkCallStackMessage', but allows to set the chunking size in bytes.
-chunkCallStackMessage_ :: Word16 -> BinaryCallStackMessage -> [BinaryEventlogMessage]
+chunkCallStackMessage_ :: Word16 -> BinaryCallStackMessage -> [Message]
 chunkCallStackMessage_ chunkLimit16 msg0 =
   let
     chunkLimitInt = word16ToInt chunkLimit16
@@ -114,7 +114,7 @@ chunkCallStackMessage_ chunkLimit16 msg0 =
       , binaryCallStack = chunk
       }
 
-  mkEventlogMessages :: [[BinaryStackItem]] -> [BinaryEventlogMessage]
+  mkEventlogMessages :: [[BinaryStackItem]] -> [Message]
   mkEventlogMessages [] =
     -- If there are no chunks, we simply return the original message
     [ CallStackFinal msg0
@@ -199,7 +199,7 @@ lookupSourceLocationMessage s = do
 -- | Implementation agnostic symbol table supposed to be used to deduplicate symbols
 -- in 'CallStack'.
 --
--- When transforming 'CallStack' to ['BinaryEventlogMessage'] we replace some
+-- When transforming 'CallStack' to ['Message'] we replace some
 -- symbols with identifiers.
 -- In particular arbitrary length symbols, such as 'Text's and 'SourceLocation's.
 -- As these symbols are discovered while encoding the callstack, the 'SymbolTableWriter'
