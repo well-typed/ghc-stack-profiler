@@ -250,9 +250,9 @@ hydrateBinaryEventlog st msg =
     --    [2,1]
     -- 3. When reading the eventlog, we store prepend later messages, resulting in:
     --    [2,1] [4,3] [6,5]
-    -- 4. 'catCallStackMessage' reverses the individual callstack chunks to be the inverse of 'chunkCallStackMessage'
+    -- 4. 'joinCallStackChunks' reverses the individual callstack chunks to be the inverse of 'chunkCallStackMessage'
     orderedChunks = NonEmpty.reverse $ msg :| chunks
-    fullBinaryCallStackMessage = GSPC.catCallStackMessage orderedChunks
+    fullBinaryCallStackMessage = GSPC.joinCallStackChunks orderedChunks
     (callStackMessage, errs) =
       GSPC.hydrateEventlogCallStackMessage
         (GSPC.mkIntMapSymbolTableReader (hydration_table st))

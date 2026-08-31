@@ -25,7 +25,7 @@ properties :: TestTree
 properties =
   testGroup
     "property"
-    [ testProperty "chunkCallStackMessage . catCallStackMessage" $
+    [ testProperty "chunkCallStackMessage . joinCallStackChunks" $
         withNumTests 500 $
           withMaxSize (fromIntegral callStackSizeLimit * 3) $
             chunkingRoundTrip_prop callStackSizeLimit
@@ -33,7 +33,7 @@ properties =
         withNumTests 500 $ do
           withMaxSize (fromIntegral callStackSizeLimit * 3) $
             messageChunkSize_prop eventlogBufferSize callStackSizeLimit
-    , testProperty "chunkCallStackMessage_ n . catCallStackMessage" $
+    , testProperty "chunkCallStackMessage_ n . joinCallStackChunks" $
         withNumTests 500 $
           withEventlogSizeGen $ \eventlogSize ->
             withMaxSize (fromIntegral eventlogSize * 20) $
@@ -53,7 +53,7 @@ properties =
         CallStackFinal csm -> Just csm
         _ -> Nothing
     in
-      catCallStackMessage (NonEmpty.fromList msgs) === message
+      joinCallStackChunks (NonEmpty.fromList msgs) === message
 
   messageChunkSize_prop eventlogSize stackSizeLimit message =
     let
