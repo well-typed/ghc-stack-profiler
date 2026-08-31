@@ -4,8 +4,6 @@ import Control.Exception
 import Data.Either (partitionEithers)
 import Data.IntMap.Strict (IntMap)
 import qualified Data.IntMap.Strict as IntMap
-import Data.List.NonEmpty (NonEmpty (..))
-import qualified Data.List.NonEmpty as NonEmpty
 import Data.Text (Text)
 import qualified Data.Text as Text
 import GHC.Generics
@@ -59,18 +57,6 @@ hydrateEventlogCallStackMessage decodeTable msg =
         }
     , errors
     )
-
--- | Combine all 'BinaryCallStackMessage's into a single 'BinaryCallStackMessage'.
--- We assume that all 'BinaryCallStackMessage' only differ in their 'binaryCallStack' values.
---
--- 'catCallStackMessage' is the conceptually inverse of 'chunkCallStackMessage'.
-catCallStackMessage :: NonEmpty BinaryCallStackMessage -> BinaryCallStackMessage
-catCallStackMessage msgs =
-  MkBinaryCallStackMessage
-    { binaryCallThreadId = binaryCallThreadId $ NonEmpty.head msgs
-    , binaryCallCapabilityId = binaryCallCapabilityId $ NonEmpty.head msgs
-    , binaryCallStack = concatMap (reverse . binaryCallStack) . reverse $ NonEmpty.toList msgs
-    }
 
 -- | Implementation agnostic symbol table reader helping consumers to decode
 -- 'BinaryEventlogMessage's into a 'CallStackMessage'.

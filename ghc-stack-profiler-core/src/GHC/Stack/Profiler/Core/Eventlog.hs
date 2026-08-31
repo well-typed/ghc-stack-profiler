@@ -13,6 +13,7 @@ module GHC.Stack.Profiler.Core.Eventlog (
   incrementSourceLocationId,
   IpeId (..),
   deserializeEventlogMessage,
+  catCallStackMessage,
 
   -- * Eventlog constants
   callStackFinalMessageTag,
@@ -36,6 +37,8 @@ import qualified Data.List as List
 import Data.Text (Text)
 import GHC.Generics
 import GHC.Stack.Profiler.Core.Util
+import Data.List.NonEmpty (NonEmpty)
+import qualified Data.List.NonEmpty as NonEmpty
 
 -- ----------------------------------------------------------------------------
 -- Eventlog Messages
@@ -155,6 +158,18 @@ deserializeEventlogMessage :: LBS.ByteString -> Either String BinaryEventlogMess
 deserializeEventlogMessage msg = case runGetOrFail get msg of
   Left (_, _, errMsg) -> Left errMsg
   Right (_, _, callStackMessage) -> Right callStackMessage
+
+-- | Combine all 'BinaryCallStackMessage's into a single 'BinaryCallStackMessage'.
+-- We assume that all 'BinaryCallStackMessage' only differ in their 'binaryCallStack' values.
+--
+-- 'catCallStackMessage' is the conceptually inverse of 'chunkCallStackMessage'.
+catCallStackMessage :: NonEmpty BinaryCallStackMessage -> BinaryCallStackMessage
+catCallStackMessage msgs =
+  MkBinaryCallStackMessage
+    { binaryCallThreadId = binaryCallThreadId $ NonEmpty.head msgs
+    , binaryCallCapabilityId = binaryCallCapabilityId $ NonEmpty.head msgs
+    , binaryCallStack = concatMap (reverse . binaryCallStack) . reverse $ NonEmpty.toList msgs
+    }
 
 -- ----------------------------------------------------------------------------
 -- Binary instances

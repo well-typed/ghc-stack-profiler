@@ -81,6 +81,7 @@ import GHC.Stack.Profiler.Core.Eventlog (
   ThreadId (..),
   callStackSizeLimit,
   callStackSizeLimit_,
+  catCallStackMessage,
   deserializeEventlogMessage,
   eventlogBufferSize,
  )
@@ -89,7 +90,6 @@ import GHC.Stack.Profiler.Core.Hydrate (
   IntMapTable,
   MissingKeyError (..),
   SymbolTableReader (..),
-  catCallStackMessage,
   emptyIntMapTable,
   hydrateEventlogCallStackMessage,
   insertSourceLocationMessage,
