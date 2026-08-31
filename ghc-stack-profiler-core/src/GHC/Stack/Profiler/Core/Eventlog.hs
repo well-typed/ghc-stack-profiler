@@ -12,6 +12,7 @@ module GHC.Stack.Profiler.Core.Eventlog (
   SourceLocationId (..),
   incrementSourceLocationId,
   IpeId (..),
+  deserializeEventlogMessage,
 
   -- * Eventlog constants
   callStackFinalMessageTag,
@@ -28,6 +29,8 @@ module GHC.Stack.Profiler.Core.Eventlog (
 
 import Control.Monad (replicateM)
 import Data.Binary
+import Data.Binary.Get (runGetOrFail)
+import qualified Data.ByteString.Lazy as LBS
 import Data.Coerce (coerce)
 import qualified Data.List as List
 import Data.Text (Text)
@@ -148,6 +151,11 @@ newtype IpeId = MkIpeId
   { getIpeId :: Word64
   }
   deriving (Eq, Ord, Show, Read, Generic)
+
+deserializeEventlogMessage :: LBS.ByteString -> Either String BinaryEventlogMessage
+deserializeEventlogMessage msg = case runGetOrFail get msg of
+  Left (_, _, errMsg) -> Left errMsg
+  Right (_, _, callStackMessage) -> Right callStackMessage
 
 -- ----------------------------------------------------------------------------
 -- Binary instances

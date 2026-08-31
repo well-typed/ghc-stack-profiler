@@ -1,9 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 module GHC.Stack.Profiler.Core.CallStack (
-  -- * High-level API
-  deserializeEventlogMessage,
-
   -- * Serialisable 'ThreadSample'
   CallStackMessage (..),
   StackItem (..),
@@ -28,29 +25,18 @@ import Control.Exception (Exception (..))
 import Control.Monad (when)
 import Control.Monad.Trans.State.Strict (State, runState)
 import qualified Control.Monad.Trans.State.Strict as State
-import Data.Binary
-import Data.Binary.Get
-import qualified Data.ByteString.Lazy as LBS
 import Data.Either (partitionEithers)
 import qualified Data.List as List
 import Data.List.NonEmpty (NonEmpty (..))
 import qualified Data.List.NonEmpty as NonEmpty
 import Data.Text (Text)
 import qualified Data.Text as Text
+import Data.Word (Word16)
 import GHC.Generics
 import GHC.Stack.Profiler.Core.Eventlog
 import GHC.Stack.Profiler.Core.SourceLocation
 import GHC.Stack.Profiler.Core.SymbolTable
 import GHC.Stack.Profiler.Core.Util (word16ToInt)
-
--- ----------------------------------------------------------------------------
--- Thread Sample
--- ----------------------------------------------------------------------------
-
-deserializeEventlogMessage :: LBS.ByteString -> Either String BinaryEventlogMessage
-deserializeEventlogMessage msg = case runGetOrFail get msg of
-  Left (_, _, errMsg) -> Left errMsg
-  Right (_, _, callStackMessage) -> Right callStackMessage
 
 -- ----------------------------------------------------------------------------
 -- Decoded RTS CallStack
