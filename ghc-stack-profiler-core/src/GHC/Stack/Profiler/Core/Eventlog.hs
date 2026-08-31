@@ -2,7 +2,7 @@ module GHC.Stack.Profiler.Core.Eventlog (
   -- * Eventlgog Message types
   Message (..),
   CallStackChunk (..),
-  BinaryStringMessage (..),
+  StringDef (..),
   BinarySourceLocationMessage (..),
   BinaryStackItem (..),
   ThreadId (..),
@@ -85,7 +85,7 @@ data Message
     --   This messages associates the string ID @strId@ with the string
     --   @strLen@, for future use in call-stack messages and source location
     --   definitions.
-    StringDef !BinaryStringMessage
+    StringDef !StringDef
   | -- | A source location definition, indicated by the prefix @FF CD@.
     --
     --   This message associates the source location ID @srcLocId@ with the
@@ -101,9 +101,9 @@ data CallStackChunk = MkCallStackChunk
   }
   deriving (Eq, Ord, Show, Read, Generic)
 
-data BinaryStringMessage = MkBinaryStringMessage
-  { binaryStringMessageId :: !StringId
-  , binaryStringMessage :: !Text
+data StringDef = MkStringDef
+  { stringDefId :: !StringId
+  , stringDefBody :: !Text
   }
   deriving (Eq, Ord, Show, Read, Generic)
 
@@ -325,13 +325,13 @@ instance Binary BinarySourceLocationMessage where
       <*> getWord32
       <*> get
 
-instance Binary BinaryStringMessage where
+instance Binary StringDef where
   put msg = do
-    put $ binaryStringMessageId msg
-    putTextWord16 stringLengthLimit (binaryStringMessage msg)
+    put $ stringDefId msg
+    putTextWord16 stringLengthLimit (stringDefBody msg)
 
   get = do
-    MkBinaryStringMessage
+    MkStringDef
       <$> get
       <*> getTextWord16
 

@@ -75,14 +75,14 @@ initMessages symbolTable =
   in
     serializeBinaryEventlogMessages binaryEventlogMessages
 
-binaryEventlogDefinitions :: SymbolTableWriter MapTable -> ([BinaryStringMessage], [BinarySourceLocationMessage])
+binaryEventlogDefinitions :: SymbolTableWriter MapTable -> ([StringDef], [BinarySourceLocationMessage])
 binaryEventlogDefinitions table =
   let
     knownStrings = getKnownStrings $ writerTable table
     knownSrcLocs = getKnownSourceLocations $ writerTable table
 
     stringDefs =
-      fmap (uncurry MkBinaryStringMessage) knownStrings
+      fmap (uncurry MkStringDef) knownStrings
 
     srcLocDefs =
       map (uncurry go) knownSrcLocs

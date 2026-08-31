@@ -109,13 +109,13 @@ mkIntMapSymbolTableReader tbl =
     }
 
 {-# INLINEABLE insertTextMessage #-}
-insertTextMessage :: BinaryStringMessage -> IntMapTable -> IntMapTable
+insertTextMessage :: StringDef -> IntMapTable -> IntMapTable
 insertTextMessage msg tbl =
   tbl
     { stringLookupTable =
         IntMap.insert
-          (idToInt $ binaryStringMessageId msg)
-          (binaryStringMessage msg)
+          (idToInt $ stringDefId msg)
+          (stringDefBody msg)
           (stringLookupTable tbl)
     }
 
