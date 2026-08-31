@@ -132,7 +132,7 @@ chunkCallStackMessage_ chunkLimit16 msg0 =
 
 data EncodingState tbl = MkEncodingState
   { symbolTableWriter :: !(SymbolTableWriter tbl)
-  , stringMessages :: ![BinaryStringMessage]
+  , stringMessages :: ![StringDef]
   , sourceLocMessages :: ![BinarySourceLocationMessage]
   }
   deriving (Generic)
@@ -152,7 +152,7 @@ newEncodingState msgTbl0 =
 setSymbolTableWriter :: tbl -> State.State (EncodingState tbl) ()
 setSymbolTableWriter tbl = State.modify' (\st -> st{symbolTableWriter = (symbolTableWriter st){writerTable = tbl}})
 
-addStringMessage :: BinaryStringMessage -> State.State (EncodingState tbl) ()
+addStringMessage :: StringDef -> State.State (EncodingState tbl) ()
 addStringMessage msg = State.modify' (\st -> st{stringMessages = msg : stringMessages st})
 
 addSourceLocationMessage :: BinarySourceLocationMessage -> State.State (EncodingState tbl) ()
@@ -179,7 +179,7 @@ lookupTextMessage s = do
   (sid, new) <- lookupOrInsertTextMessage s
   when new $
     addStringMessage $
-      MkBinaryStringMessage sid s
+      MkStringDef sid s
   pure sid
 
 lookupSourceLocationMessage :: forall tbl. SourceLocation -> State (EncodingState tbl) SourceLocationId

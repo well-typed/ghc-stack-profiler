@@ -10,7 +10,7 @@ module GHC.Stack.Profiler.Core (
   -- * Binary Eventlog Protocol Messages
   Message (..),
   CallStackChunk (..),
-  BinaryStringMessage (..),
+  StringDef (..),
   BinarySourceLocationMessage (..),
   BinaryStackItem (..),
   StringId (..),
@@ -69,14 +69,14 @@ import GHC.Stack.Profiler.Core.Dehydrate (
   getKnownStrings,
  )
 import GHC.Stack.Profiler.Core.Eventlog (
-  CallStackChunk (..),
   BinarySourceLocationMessage (..),
   BinaryStackItem (..),
-  BinaryStringMessage (..),
+  CallStackChunk (..),
   CapabilityId (..),
   IpeId (..),
   Message (..),
   SourceLocationId (..),
+  StringDef (..),
   StringId (..),
   ThreadId (..),
   callStackSizeLimit,
