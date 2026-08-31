@@ -17,29 +17,41 @@ module GHC.Stack.Profiler.Core (
   SourceLocationId (..),
 
   -- * Decode
+
+  -- ** Deserialise
+  deserializeEventlogMessage,
+  catCallStackMessage,
+
+  -- ** Hydrate
+  hydrateEventlogCallStackMessage,
+  BinaryCallStackDecodeError (..),
+
+  -- *** Symbol Table
   SymbolTableReader (..),
   IntMapTable,
-  BinaryCallStackDecodeError (..),
-  MissingKeyError (..),
-  catCallStackMessage,
-  deserializeEventlogMessage,
-  hydrateEventlogCallStackMessage,
   mkIntMapSymbolTableReader,
   emptyIntMapTable,
-  insertSourceLocationMessage,
   insertTextMessage,
+  insertSourceLocationMessage,
+  MissingKeyError (..),
 
   -- * Encode
-  dehydrateCallStackMessage,
-  SymbolTableWriter (..),
-  MapTable,
-  emptyMapSymbolTableWriter,
-  getKnownStrings,
-  getKnownSourceLocations,
+
+  -- ** Serialise
   callStackSizeLimit,
   callStackSizeLimit_,
   eventlogBufferSize,
   chunkCallStackMessage_,
+
+  -- ** Dehydrate
+  dehydrateCallStackMessage,
+
+  -- *** Symbol Table
+  SymbolTableWriter (..),
+  emptyMapSymbolTableWriter,
+  MapTable,
+  getKnownStrings,
+  getKnownSourceLocations,
 ) where
 
 import GHC.Stack.Profiler.Core.CallStack (
