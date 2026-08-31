@@ -5,7 +5,6 @@ import qualified Data.Text as Text
 import Data.Word (Word64)
 import qualified GHC.Stack.Profiler.Core.Eventlog as GSP (CapabilityId, IpeId (..))
 import qualified GHC.Stack.Profiler.Core.SourceLocation as GSP (SourceLocation (..))
-import qualified GHC.Stack.Profiler.Core.Util as GSP
 import IpeDB.Types.InfoProv (InfoProv (..), InfoProvId (..))
 import IpeDB.Types.SrcLoc (Point (..), Range (..), SrcLoc (..))
 
@@ -47,9 +46,9 @@ srcLocFile SrcLoc{srcFilePath}
   | otherwise = Just (Text.pack srcFilePath)
 
 srcLocColumn :: SrcLoc -> Maybe Int
-srcLocColumn SrcLoc{srcRange = Just Range{start = Point{column}}} = Just (GSP.word32ToInt column)
+srcLocColumn SrcLoc{srcRange = Just Range{start = Point{column}}} = Just (fromIntegral column)
 srcLocColumn _ = Nothing
 
 srcLocLine :: SrcLoc -> Maybe Int
-srcLocLine SrcLoc{srcRange = Just Range{start = Point{line}}} = Just (GSP.word32ToInt line)
+srcLocLine SrcLoc{srcRange = Just Range{start = Point{line}}} = Just (fromIntegral line)
 srcLocLine _ = Nothing

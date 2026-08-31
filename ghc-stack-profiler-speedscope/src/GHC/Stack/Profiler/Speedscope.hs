@@ -32,7 +32,6 @@ import qualified GHC.RTS.Events.Incremental as E
 import qualified GHC.Stack.Profiler.Core.Eventlog as GSP
 import qualified GHC.Stack.Profiler.Core.SymbolTable as GSP
 import qualified GHC.Stack.Profiler.Core.ThreadSample as GSP
-import qualified GHC.Stack.Profiler.Core.Util as GSP (word64ToInt)
 import GHC.Stack.Profiler.Speedscope.Options
 import GHC.Stack.Profiler.Speedscope.Types
 import qualified IpeDB.Database as DB
@@ -432,7 +431,7 @@ toSpeedscopeProfiles programName samples aggregationMode =
     toCapabilitySample sample = (coerce sample.sampleCapabilityId, toSingleProfileSample sample)
 
     toSingleProfileSample :: Sample -> [Int]
-    toSingleProfileSample sample = map (GSP.word64ToInt . coerce) sample.sampleStack
+    toSingleProfileSample sample = map (fromIntegral @Word64 @Int . coerce) sample.sampleStack
 
 toSpeedscopeFrame :: StackFrame -> Speedscope.Frame
 toSpeedscopeFrame = \case

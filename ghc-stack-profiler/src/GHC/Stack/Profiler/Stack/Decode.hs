@@ -19,7 +19,6 @@ import GHC.Exts.Heap.InfoTable.Types
 
 import GHC.Stack.Profiler.Core.Eventlog
 import GHC.Stack.Profiler.Core.ThreadSample
-import GHC.Stack.Profiler.Core.Util
 import GHC.Stack.Profiler.Stack.Compat (lookupIpeIdForStackFrame)
 
 decodeStackWithIpProvId :: StackSnapshot -> IO [StackItem]
@@ -66,8 +65,8 @@ stackAnnotationToStackItem someStackAnnotation =
       srcLoc <- showStackAnnotationLocation someStackAnnotation
       Just $
         MkSourceLocation
-          { line = intToWord32 $ srcLocStartLine srcLoc
-          , column = intToWord32 $ srcLocStartCol srcLoc
+          { line = fromIntegral $ srcLocStartLine srcLoc
+          , column = fromIntegral $ srcLocStartCol srcLoc
           , fileName = Text.pack $ srcLocFile srcLoc
           }
   in
