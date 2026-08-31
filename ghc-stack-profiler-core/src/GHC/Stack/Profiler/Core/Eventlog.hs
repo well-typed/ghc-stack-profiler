@@ -16,11 +16,11 @@ module GHC.Stack.Profiler.Core.Eventlog (
   joinCallStackChunks,
 
   -- * Eventlog constants
-  callStackFinalMessageTag,
-  callStackPartialMessageTag,
-  callStackStringMessageTag,
-  callStackSourceLocationMessageTag,
-  callStackMessageTags,
+  callStackFinalTag,
+  callStackChunkTag,
+  stringDefTag,
+  sourceLocationDefTag,
+  messageTags,
   callStackSizeLimit,
   callStackSizeLimit_,
   byteSizeOf,
@@ -176,24 +176,24 @@ joinCallStackChunks msgs =
 -- Binary instances
 -- ----------------------------------------------------------------------------
 
-callStackFinalMessageTag :: Word16
-callStackFinalMessageTag = 0xFFCA
+callStackFinalTag :: Word16
+callStackFinalTag = 0xFFCA
 
-callStackPartialMessageTag :: Word16
-callStackPartialMessageTag = 0xFFCB
+callStackChunkTag :: Word16
+callStackChunkTag = 0xFFCB
 
-callStackStringMessageTag :: Word16
-callStackStringMessageTag = 0xFFCC
+stringDefTag :: Word16
+stringDefTag = 0xFFCC
 
-callStackSourceLocationMessageTag :: Word16
-callStackSourceLocationMessageTag = 0xFFCD
+sourceLocationDefTag :: Word16
+sourceLocationDefTag = 0xFFCD
 
-callStackMessageTags :: [Word16]
-callStackMessageTags =
-  [ callStackFinalMessageTag
-  , callStackPartialMessageTag
-  , callStackStringMessageTag
-  , callStackSourceLocationMessageTag
+messageTags :: [Word16]
+messageTags =
+  [ callStackFinalTag
+  , callStackChunkTag
+  , stringDefTag
+  , sourceLocationDefTag
   ]
 
 -- | Each message in the eventlog can be at most 2^16 bytes
@@ -236,13 +236,13 @@ byteSizeOf = \case
 instance Binary Message where
   put = \case
     CallStackFinal msg ->
-      putWithTag callStackFinalMessageTag msg
+      putWithTag callStackFinalTag msg
     CallStackChunk msg ->
-      putWithTag callStackPartialMessageTag msg
+      putWithTag callStackChunkTag msg
     StringDef msg ->
-      putWithTag callStackStringMessageTag msg
+      putWithTag stringDefTag msg
     SourceLocationDef msg ->
-      putWithTag callStackSourceLocationMessageTag msg
+      putWithTag sourceLocationDefTag msg
    where
     putWithTag t msg = putWord16 t >> put msg
 
@@ -250,13 +250,13 @@ instance Binary Message where
     tag <- getWord16
     case tag of
       _
-        | tag == callStackFinalMessageTag ->
+        | tag == callStackFinalTag ->
             CallStackFinal <$> get
-        | tag == callStackPartialMessageTag ->
+        | tag == callStackChunkTag ->
             CallStackChunk <$> get
-        | tag == callStackStringMessageTag ->
+        | tag == stringDefTag ->
             StringDef <$> get
-        | tag == callStackSourceLocationMessageTag ->
+        | tag == sourceLocationDefTag ->
             SourceLocationDef <$> get
         | otherwise ->
             fail $
@@ -265,7 +265,7 @@ instance Binary Message where
                 ++ " but got "
                 ++ showAsHex tag
    where
-    tags = List.intercalate ", " $ map showAsHex callStackMessageTags
+    tags = List.intercalate ", " $ map showAsHex messageTags
 
 instance Binary CallStackChunk where
   put msg = do
