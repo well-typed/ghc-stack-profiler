@@ -133,7 +133,7 @@ chunkCallStackMessage_ chunkLimit16 msg0 =
 data EncodingState tbl = MkEncodingState
   { symbolTableWriter :: !(SymbolTableWriter tbl)
   , stringMessages :: ![StringDef]
-  , sourceLocMessages :: ![BinarySourceLocationMessage]
+  , sourceLocMessages :: ![SourceLocationDef]
   }
   deriving (Generic)
 
@@ -155,7 +155,7 @@ setSymbolTableWriter tbl = State.modify' (\st -> st{symbolTableWriter = (symbolT
 addStringMessage :: StringDef -> State.State (EncodingState tbl) ()
 addStringMessage msg = State.modify' (\st -> st{stringMessages = msg : stringMessages st})
 
-addSourceLocationMessage :: BinarySourceLocationMessage -> State.State (EncodingState tbl) ()
+addSourceLocationMessage :: SourceLocationDef -> State.State (EncodingState tbl) ()
 addSourceLocationMessage msg = State.modify' (\st -> st{sourceLocMessages = msg : sourceLocMessages st})
 
 lookupOrInsertTextMessage :: forall tbl. Text -> State (EncodingState tbl) (StringId, Bool)
@@ -188,11 +188,11 @@ lookupSourceLocationMessage s = do
   when new $ do
     fileId <- lookupTextMessage $ fileName s
     addSourceLocationMessage $
-      MkBinarySourceLocationMessage
-        { binarySourceLocationMessageId = sid
-        , binarySourceLocationRow = line s
-        , binarySourceLocationColumn = column s
-        , binarySourceLocationFilename = fileId
+      MkSourceLocationDef
+        { sourceLocationDefId = sid
+        , sourceLocationDefRow = line s
+        , sourceLocationDefColumn = column s
+        , sourceLocationDefFilename = fileId
         }
   pure sid
 
