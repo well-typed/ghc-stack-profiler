@@ -49,27 +49,27 @@ import GHC.Stack.Profiler.Core.Util
 -- Message format:
 --
 -- @
--- MESSAGE
---  := FF CA (stackFinal: CALL_STACK)
---   | FF CB (stackChunk: CALL_STACK)
---   | FF CC (strDef: STR_DEF)
---   | FF CD (srcLocDef: SRC_LOC_DEF)
+-- 'Message'
+--  := FF CA (stackFinal: 'CallStackChunk')
+--   | FF CB (stackChunk: 'CallStackChunk')
+--   | FF CC (stringDef: 'StringDef')
+--   | FF CD (sourceLocationDef: 'SourceLocationDef')
 --
--- CALL_STACK
---  := (capability: 'Word32') (threadId: 'Word32') (callStackLen: 'Word16') (callStack: CALL_STACK_FRAME{callStackLen})
+-- 'CallStackChunk'
+--  := (capabilityId: 'Word32') (threadId: 'Word32') (callStackLen: 'Word16') (callStack: 'CallStackFrame'{callStackLen})
 --  -- NOTE: callStackLen must be smaller than (2^16 - 8) / 9
 --
--- CALL_STACK_FRAME
+-- 'CallStackFrame'
 --  := 01 (ipe: 'Word64')
---   | 02 (strId: 'Word64')
---   | 03 (strId: 'Word64') (srcLocId: 'Word64')
+--   | 02 (stringId: 'Word64')
+--   | 03 (stringId: 'Word64') (sourceLocationId: 'Word64')
 --
--- STR_DEF
---  := (strId: 'Word64') (strLen: 'Word16') (str: 'Char'{strLen})
---  -- NOTE: strLen must be smaller than 2^16 - 8
+-- 'StringDef'
+--  := (stringId: 'Word64') (stringLen: 'Word16') (string: 'Char'{stringLen})
+--  -- NOTE: stringLen must be smaller than 2^16 - 8
 --
--- SRC_LOC_DEF
---  := (srcLocId: 'Word64') (row: 'Word32') (col: 'Word32') (functionId: 'Word64') (filename: 'Word64')
+-- 'SourceLocationDef'
+--  := (sourceLocationId: 'Word64') (row: 'Word32') (column: 'Word32') (functionId: 'Word64') (filename: 'Word64')
 -- @
 data Message
   = -- | A chunk of the call-stack, indicated by the prefix @FF CA@.
@@ -82,7 +82,7 @@ data Message
     CallStackChunk !CallStackChunk
   | -- | A string definition, indicated by the prefix @FF CC@.
     --
-    --   This messages associates the string ID @strId@ with the string
+    --   This messages associates the string ID @stringId@ with the string
     --   @strLen@, for future use in call-stack messages and source location
     --   definitions.
     StringDef !StringDef
