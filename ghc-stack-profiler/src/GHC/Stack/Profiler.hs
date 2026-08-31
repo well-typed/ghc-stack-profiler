@@ -44,7 +44,7 @@ import qualified Debug.Trace
 import qualified Debug.Trace.Binary.Compat as Compat
 
 import GHC.Stack.Profiler.Commands (sendStopProfilingMessage)
-import GHC.Stack.Profiler.Core (CallStackMessage (..), ThreadSample (..))
+import GHC.Stack.Profiler.Core (CallStackMessage (..))
 import qualified GHC.Stack.Profiler.Core as GSPC
 import GHC.Stack.Profiler.Decode
 import qualified GHC.Stack.Profiler.Decode as Decode

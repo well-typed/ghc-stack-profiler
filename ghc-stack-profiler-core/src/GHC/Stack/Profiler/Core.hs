@@ -1,11 +1,7 @@
 module GHC.Stack.Profiler.Core (
-  -- * Thread Samples
-  ThreadSample (..),
-  CapabilityId (..),
-  StackSnapshot (..),
-
   -- * Eventlog Protocol Messages
   CallStackMessage (..),
+  CapabilityId (..),
   StackItem (..),
   IpeId (..),
   SourceLocation (..),
@@ -51,7 +47,6 @@ module GHC.Stack.Profiler.Core (
   insertTextMessage,
 ) where
 
-import GHC.Stack.CloneStack (StackSnapshot (..))
 import GHC.Stack.Profiler.Core.Eventlog (
   BinaryCallStackMessage (..),
   BinaryEventlogMessage (..),
@@ -87,7 +82,6 @@ import GHC.Stack.Profiler.Core.ThreadSample (
   BinaryCallStackDecodeError (..),
   CallStackMessage (..),
   StackItem (..),
-  ThreadSample (..),
   catCallStackMessage,
   chunkCallStackMessage_,
   dehydrateCallStackMessage,

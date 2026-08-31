@@ -2,7 +2,6 @@
 
 module GHC.Stack.Profiler.Core.ThreadSample (
   -- * High-level API
-  ThreadSample (..),
   deserializeEventlogMessage,
 
   -- * Serialisable 'ThreadSample'
@@ -25,7 +24,6 @@ module GHC.Stack.Profiler.Core.ThreadSample (
   lookupTextMessage,
 ) where
 
-import Control.Concurrent (ThreadId)
 import Control.Exception (Exception (..))
 import Control.Monad (when)
 import Control.Monad.Trans.State.Strict (State, runState)
@@ -40,7 +38,6 @@ import qualified Data.List.NonEmpty as NonEmpty
 import Data.Text (Text)
 import qualified Data.Text as Text
 import GHC.Generics
-import GHC.Stack.CloneStack (StackSnapshot)
 import GHC.Stack.Profiler.Core.Eventlog
 import GHC.Stack.Profiler.Core.SourceLocation
 import GHC.Stack.Profiler.Core.SymbolTable
@@ -49,20 +46,6 @@ import GHC.Stack.Profiler.Core.Util (word16ToInt)
 -- ----------------------------------------------------------------------------
 -- Thread Sample
 -- ----------------------------------------------------------------------------
-
--- | A 'ThreadSample' is a snapshot of a threads RTS callstack.
--- This callstack is a copy of the original callstack, so can be traversed and
--- decoded without affecting the running thread.
---
--- The 'StackSnapshot' is a boxed value and needs to be garbage collected.
--- Note, as long as 'StackSnapshot' is alive, you keep the full callstack
--- alive, which might be quite expensive.
-data ThreadSample = ThreadSample
-  { threadSampleId :: !ThreadId
-  , threadSampleCapability :: !CapabilityId
-  , threadSampleStackSnapshot :: !StackSnapshot
-  }
-  deriving (Generic)
 
 deserializeEventlogMessage :: LBS.ByteString -> Either String BinaryEventlogMessage
 deserializeEventlogMessage msg = case runGetOrFail get msg of
