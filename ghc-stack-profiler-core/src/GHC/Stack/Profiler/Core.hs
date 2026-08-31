@@ -8,7 +8,7 @@ module GHC.Stack.Profiler.Core (
   SourceLocation (..),
 
   -- * Binary Eventlog Protocol Messages
-  BinaryEventlogMessage (..),
+  Message (..),
   BinaryCallStackMessage (..),
   BinaryStringMessage (..),
   BinarySourceLocationMessage (..),
@@ -70,12 +70,12 @@ import GHC.Stack.Profiler.Core.Dehydrate (
  )
 import GHC.Stack.Profiler.Core.Eventlog (
   BinaryCallStackMessage (..),
-  BinaryEventlogMessage (..),
   BinarySourceLocationMessage (..),
   BinaryStackItem (..),
   BinaryStringMessage (..),
   CapabilityId (..),
   IpeId (..),
+  Message (..),
   SourceLocationId (..),
   StringId (..),
   ThreadId (..),

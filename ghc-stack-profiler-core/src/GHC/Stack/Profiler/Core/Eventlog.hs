@@ -1,6 +1,6 @@
 module GHC.Stack.Profiler.Core.Eventlog (
   -- * Eventlgog Message types
-  BinaryEventlogMessage (..),
+  Message (..),
   BinaryCallStackMessage (..),
   BinaryStringMessage (..),
   BinarySourceLocationMessage (..),
@@ -71,7 +71,7 @@ import GHC.Stack.Profiler.Core.Util
 -- SRC_LOC_DEF
 --  := (srcLocId: 'Word64') (row: 'Word32') (col: 'Word32') (functionId: 'Word64') (filename: 'Word64')
 -- @
-data BinaryEventlogMessage
+data Message
   = -- | A chunk of the call-stack, indicated by the prefix @FF CA@.
     --
     --   This variant indicates that no further 'CallStackChunk' or 'CallStackFinal' will follow.
@@ -157,7 +157,7 @@ newtype IpeId = MkIpeId
   }
   deriving (Eq, Ord, Show, Read, Generic)
 
-deserializeEventlogMessage :: LBS.ByteString -> Either String BinaryEventlogMessage
+deserializeEventlogMessage :: LBS.ByteString -> Either String Message
 deserializeEventlogMessage msg = case runGetOrFail get msg of
   Left (_, _, errMsg) -> Left errMsg
   Right (_, _, callStackMessage) -> Right callStackMessage
@@ -235,7 +235,7 @@ byteSizeOf = \case
   BinaryMessage _ Nothing -> 1 + 8 {- 0x2 + Word64 of 'StringId' -}
   BinaryMessage _ (Just _) -> 1 + 8 + 8 {- 0x3 + Word64 of 'StringId' + Word64 of 'SourceLocationId' -}
 
-instance Binary BinaryEventlogMessage where
+instance Binary Message where
   put = \case
     CallStackFinal msg ->
       putWithTag callStackFinalMessageTag msg
@@ -262,7 +262,7 @@ instance Binary BinaryEventlogMessage where
             SourceLocationDef <$> get
         | otherwise ->
             fail $
-              "BinaryEventlogMessage.get: Unknown tag expected one of "
+              "Message.get: Unknown tag expected one of "
                 ++ tags
                 ++ " but got "
                 ++ showAsHex tag
