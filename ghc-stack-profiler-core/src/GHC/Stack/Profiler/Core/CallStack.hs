@@ -92,7 +92,6 @@ dehydrateCallStackMessage msgTbl0 msg =
     sourceLocDefs =
       map SourceLocationDef $ sourceLocMessages finalState
 
-    -- TODO: this needs to be fixed
     stackMsgChunks =
       chunkCallStackMessage
         MkBinaryCallStackMessage
