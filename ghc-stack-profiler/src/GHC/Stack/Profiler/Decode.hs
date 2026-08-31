@@ -20,6 +20,7 @@ import GHC.Conc.Sync (fromThreadId)
 import Control.Exception (assert)
 import GHC.Stack.Profiler.Core.Eventlog
 import GHC.Stack.Profiler.Core.SymbolTable
+import GHC.Stack.Profiler.Core.SourceLocation
 import GHC.Stack.Profiler.Core.ThreadSample
 import GHC.Stack.Profiler.Stack.Decode (decodeStackWithIpProvId)
 import GHC.Stack.Profiler.SymbolTable
