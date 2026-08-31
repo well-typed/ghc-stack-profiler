@@ -60,15 +60,15 @@ dehydrateCallStackMessage msgTbl0 msg =
     , symbolTableWriter finalState
     )
  where
-  go :: StackItem -> State (EncodingState tbl) BinaryStackItem
+  go :: StackItem -> State (EncodingState tbl) CallStackFrame
   go = \case
     IpeId ipeId ->
-      pure $ BinaryIpe ipeId
+      pure $ CallStackFrameIpe ipeId
     UserAnnotation s mSrcLoc -> do
       srcLocId <- case mSrcLoc of
         Nothing -> pure Nothing
         Just srcLoc -> Just <$> lookupSourceLocationMessage srcLoc
-      BinaryMessage <$> lookupTextMessage (Text.pack s) <*> pure srcLocId
+      CallStackFrameAnn <$> lookupTextMessage (Text.pack s) <*> pure srcLocId
 
 -- | Chunk the 'callStackChunk' of the 'CallStackChunk' by the given 'Word16'.
 -- If there are no items in 'CallStackChunk', then a singleton list is returned containing
@@ -114,7 +114,7 @@ chunkCallStackMessage_ chunkLimit16 msg0 =
       , callStackChunk = chunk
       }
 
-  mkEventlogMessages :: [[BinaryStackItem]] -> [Message]
+  mkEventlogMessages :: [[CallStackFrame]] -> [Message]
   mkEventlogMessages [] =
     -- If there are no chunks, we simply return the original message
     [ CallStackFinal msg0

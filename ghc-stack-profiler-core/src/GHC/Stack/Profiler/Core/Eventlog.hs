@@ -4,7 +4,7 @@ module GHC.Stack.Profiler.Core.Eventlog (
   CallStackChunk (..),
   StringDef (..),
   SourceLocationDef (..),
-  BinaryStackItem (..),
+  CallStackFrame (..),
   ThreadId (..),
   CapabilityId (..),
   StringId (..),
@@ -97,7 +97,7 @@ data Message
 data CallStackChunk = MkCallStackChunk
   { callStackChunkThreadId :: !ThreadId
   , callStackChunkCapabilityId :: !CapabilityId
-  , callStackChunk :: ![BinaryStackItem]
+  , callStackChunk :: ![CallStackFrame]
   }
   deriving (Eq, Ord, Show, Read, Generic)
 
@@ -115,11 +115,9 @@ data SourceLocationDef = MkSourceLocationDef
   }
   deriving (Eq, Ord, Show, Read, Generic)
 
-data BinaryStackItem
-  = BinaryIpe {-# UNPACK #-} !IpeId
-  | BinaryMessage
-      {-# UNPACK #-} !StringId
-      {-# UNPACK #-} !(Maybe SourceLocationId)
+data CallStackFrame
+  = CallStackFrameIpe {-# UNPACK #-} !IpeId
+  | CallStackFrameAnn {-# UNPACK #-} !StringId {-# UNPACK #-} !(Maybe SourceLocationId)
   deriving (Eq, Ord, Show, Read, Generic)
 
 -- | The ID of a thread.
@@ -228,12 +226,12 @@ callStackSizeLimit_ eventlogSize =
         - 2 {- Word16 for the length of stack entry -}
     )
 
--- | Size in bytes of the given 'BinaryStackItem'
-byteSizeOf :: BinaryStackItem -> Word16
+-- | Size in bytes of the given 'CallStackFrame'
+byteSizeOf :: CallStackFrame -> Word16
 byteSizeOf = \case
-  BinaryIpe{} -> 1 + 8 {- 0x1 + Word64 of 'IpeId' -}
-  BinaryMessage _ Nothing -> 1 + 8 {- 0x2 + Word64 of 'StringId' -}
-  BinaryMessage _ (Just _) -> 1 + 8 + 8 {- 0x3 + Word64 of 'StringId' + Word64 of 'SourceLocationId' -}
+  CallStackFrameIpe{} -> 1 + 8 {- 0x1 + Word64 of 'IpeId' -}
+  CallStackFrameAnn _ Nothing -> 1 + 8 {- 0x2 + Word64 of 'StringId' -}
+  CallStackFrameAnn _ (Just _) -> 1 + 8 + 8 {- 0x3 + Word64 of 'StringId' + Word64 of 'SourceLocationId' -}
 
 instance Binary Message where
   put = \case
@@ -291,24 +289,24 @@ instance Binary CallStackChunk where
         , callStackChunk = items
         }
 
-instance Binary BinaryStackItem where
+instance Binary CallStackFrame where
   put = \case
-    BinaryIpe ipeId -> do
+    CallStackFrameIpe ipeId -> do
       putWord8 0x1
       put ipeId
-    BinaryMessage sid Nothing -> do
+    CallStackFrameAnn sid Nothing -> do
       putWord8 0x2
       put sid
-    BinaryMessage sid (Just lid) -> do
+    CallStackFrameAnn sid (Just lid) -> do
       putWord8 0x3
       put sid
       put lid
 
   get = do
     getWord8 >>= \case
-      0x1 -> BinaryIpe <$> get
-      0x2 -> BinaryMessage <$> get <*> pure Nothing
-      0x3 -> BinaryMessage <$> get <*> (Just <$> get)
+      0x1 -> CallStackFrameIpe <$> get
+      0x2 -> CallStackFrameAnn <$> get <*> pure Nothing
+      0x3 -> CallStackFrameAnn <$> get <*> (Just <$> get)
       n -> fail $ "StackItem: Unexpected tag byte encounter: " <> show n
 
 instance Binary SourceLocationDef where

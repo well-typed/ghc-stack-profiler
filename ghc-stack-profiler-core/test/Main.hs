@@ -94,11 +94,11 @@ instance Arbitrary CapabilityId where
   arbitrary =
     MkCapabilityId <$> fromIntegral <$> arbitrary @Word32
 
-instance Arbitrary BinaryStackItem where
+instance Arbitrary CallStackFrame where
   arbitrary =
     oneof
-      [ BinaryIpe <$> arbitrary
-      , BinaryMessage <$> arbitrary <*> arbitrary
+      [ CallStackFrameIpe <$> arbitrary
+      , CallStackFrameAnn <$> arbitrary <*> arbitrary
       ]
 
 instance Arbitrary IpeId where

@@ -12,7 +12,7 @@ module GHC.Stack.Profiler.Core (
   CallStackChunk (..),
   StringDef (..),
   SourceLocationDef (..),
-  BinaryStackItem (..),
+  CallStackFrame (..),
   StringId (..),
   SourceLocationId (..),
 
@@ -69,8 +69,8 @@ import GHC.Stack.Profiler.Core.Dehydrate (
   getKnownStrings,
  )
 import GHC.Stack.Profiler.Core.Eventlog (
-  BinaryStackItem (..),
   CallStackChunk (..),
+  CallStackFrame (..),
   CapabilityId (..),
   IpeId (..),
   Message (..),

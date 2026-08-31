@@ -28,11 +28,11 @@ instance Exception BinaryCallStackDecodeError where
 hydrateEventlogCallStackMessage :: SymbolTableReader -> CallStackChunk -> (CallStack, [BinaryCallStackDecodeError])
 hydrateEventlogCallStackMessage decodeTable msg =
   let
-    decodeItem :: BinaryStackItem -> Either BinaryCallStackDecodeError StackItem
+    decodeItem :: CallStackFrame -> Either BinaryCallStackDecodeError StackItem
     decodeItem = \case
-      BinaryIpe ipeId ->
+      CallStackFrameIpe ipeId ->
         Right $ IpeId ipeId
-      BinaryMessage stringId mSrcLocId -> do
+      CallStackFrameAnn stringId mSrcLocId -> do
         str <-
           maybe
             (Left $ StringIdNotFound stringId)
