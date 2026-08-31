@@ -17,30 +17,24 @@ module GHC.Stack.Profiler.Core (
 
   -- * Serialisation
   dehydrateCallStackMessage,
+  SymbolTableWriter (..),
+  MapTable,
+  emptyMapSymbolTableWriter,
+  getKnownStrings,
+  getKnownSourceLocations,
   callStackSizeLimit,
   callStackSizeLimit_,
   eventlogBufferSize,
   chunkCallStackMessage_,
 
   -- * Deserialisation
+  SymbolTableReader (..),
+  IntMapTable,
+  BinaryCallStackDecodeError (..),
+  MissingKeyError (..),
   catCallStackMessage,
   deserializeEventlogMessage,
   hydrateEventlogCallStackMessage,
-  BinaryCallStackDecodeError (..),
-
-  -- * Symbol Tables
-  SymbolTableWriter (..),
-  SymbolTableReader (..),
-
-  -- ** Symbol Tables using 'Data.Map.Strict.Map'
-  MapTable,
-  emptyMapSymbolTableWriter,
-  getKnownStrings,
-  getKnownSourceLocations,
-
-  -- ** Symbol Tables using 'Data.IntMap.Strict.IntMap'
-  IntMapTable,
-  MissingKeyError (..),
   mkIntMapSymbolTableReader,
   emptyIntMapTable,
   insertSourceLocationMessage,
