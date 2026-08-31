@@ -13,7 +13,7 @@ module GHC.Stack.Profiler.Core.Eventlog (
   incrementSourceLocationId,
   IpeId (..),
   deserializeEventlogMessage,
-  catCallStackMessage,
+  joinCallStackChunks,
 
   -- * Eventlog constants
   callStackFinalMessageTag,
@@ -165,9 +165,9 @@ deserializeEventlogMessage msg = case runGetOrFail get msg of
 -- | Combine all 'CallStackChunk's into a single 'CallStackChunk'.
 -- We assume that all 'CallStackChunk' only differ in their 'callStackChunk' values.
 --
--- 'catCallStackMessage' is the conceptually inverse of 'chunkCallStackMessage'.
-catCallStackMessage :: NonEmpty CallStackChunk -> CallStackChunk
-catCallStackMessage msgs =
+-- 'joinCallStackChunks' is the conceptually inverse of 'chunkCallStackMessage'.
+joinCallStackChunks :: NonEmpty CallStackChunk -> CallStackChunk
+joinCallStackChunks msgs =
   MkCallStackChunk
     { callStackChunkThreadId = callStackChunkThreadId $ NonEmpty.head msgs
     , callStackChunkCapabilityId = callStackChunkCapabilityId $ NonEmpty.head msgs

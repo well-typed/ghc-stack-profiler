@@ -20,7 +20,7 @@ module GHC.Stack.Profiler.Core (
 
   -- ** Deserialise
   deserializeEventlogMessage,
-  catCallStackMessage,
+  joinCallStackChunks,
 
   -- ** Hydrate
   hydrateEventlogCallStackMessage,
@@ -81,7 +81,7 @@ import GHC.Stack.Profiler.Core.Eventlog (
   ThreadId (..),
   callStackSizeLimit,
   callStackSizeLimit_,
-  catCallStackMessage,
+  joinCallStackChunks,
   deserializeEventlogMessage,
   eventlogBufferSize,
  )
