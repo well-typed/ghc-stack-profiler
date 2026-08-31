@@ -1,6 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module GHC.Stack.Profiler.Core.ThreadSample (
+module GHC.Stack.Profiler.Core.CallStack (
   -- * High-level API
   deserializeEventlogMessage,
 
