@@ -50,10 +50,10 @@ dehydrateCallStackMessage msgTbl0 msg =
 
     stackMsgChunks =
       chunkCallStackMessage
-        MkBinaryCallStackMessage
-          { binaryCallThreadId = callThreadId msg
-          , binaryCallCapabilityId = callCapabilityId msg
-          , binaryCallStack = stackItems
+        MkCallStackChunk
+          { callStackChunkThreadId = callThreadId msg
+          , callStackChunkCapabilityId = callCapabilityId msg
+          , callStackChunk = stackItems
           }
   in
     ( stringDefs ++ sourceLocDefs ++ stackMsgChunks
@@ -70,8 +70,8 @@ dehydrateCallStackMessage msgTbl0 msg =
         Just srcLoc -> Just <$> lookupSourceLocationMessage srcLoc
       BinaryMessage <$> lookupTextMessage (Text.pack s) <*> pure srcLocId
 
--- | Chunk the 'binaryCallStack' of the 'BinaryCallStackMessage' by the given 'Word16'.
--- If there are no items in 'BinaryCallStackMessage', then a singleton list is returned containing
+-- | Chunk the 'callStackChunk' of the 'CallStackChunk' by the given 'Word16'.
+-- If there are no items in 'CallStackChunk', then a singleton list is returned containing
 -- the original element.
 --
 -- Post-condition for the result @r@:
@@ -83,15 +83,15 @@ dehydrateCallStackMessage msgTbl0 msg =
 --
 -- This means, for a stack @[1,2,3,4,5,6]@ and an assumed chunk size of 2,
 -- we produce @[[6,5],[4,3],[2,1]]@.
-chunkCallStackMessage :: BinaryCallStackMessage -> [Message]
+chunkCallStackMessage :: CallStackChunk -> [Message]
 chunkCallStackMessage = chunkCallStackMessage_ callStackSizeLimit
 
 -- | Same as 'chunkCallStackMessage', but allows to set the chunking size in bytes.
-chunkCallStackMessage_ :: Word16 -> BinaryCallStackMessage -> [Message]
+chunkCallStackMessage_ :: Word16 -> CallStackChunk -> [Message]
 chunkCallStackMessage_ chunkLimit16 msg0 =
   let
     chunkLimitInt = word16ToInt chunkLimit16
-    items = binaryCallStack msg0
+    items = callStackChunk msg0
     chunked =
       let
         go (!size, curChunk, restChunk) item =
@@ -108,10 +108,10 @@ chunkCallStackMessage_ chunkLimit16 msg0 =
     mkEventlogMessages chunked
  where
   mkCallStack chunk =
-    MkBinaryCallStackMessage
-      { binaryCallThreadId = binaryCallThreadId msg0
-      , binaryCallCapabilityId = binaryCallCapabilityId msg0
-      , binaryCallStack = chunk
+    MkCallStackChunk
+      { callStackChunkThreadId = callStackChunkThreadId msg0
+      , callStackChunkCapabilityId = callStackChunkCapabilityId msg0
+      , callStackChunk = chunk
       }
 
   mkEventlogMessages :: [[BinaryStackItem]] -> [Message]

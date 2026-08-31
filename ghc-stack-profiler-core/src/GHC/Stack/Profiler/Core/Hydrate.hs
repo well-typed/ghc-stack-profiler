@@ -19,13 +19,13 @@ data BinaryCallStackDecodeError
 instance Exception BinaryCallStackDecodeError where
   displayException = \case
     StringIdNotFound sid ->
-      "Failed to decode a BinaryCallStackMessage. Failed to find a String with the key: " ++ show (getStringId sid)
+      "Failed to decode a CallStackChunk. Failed to find a String with the key: " ++ show (getStringId sid)
     SourceLocationIdNotFound sid ->
-      "Failed to decode a BinaryCallStackMessage. Failed to find a SourceLocation with the key: " ++ show (getSourceLocationId sid)
+      "Failed to decode a CallStackChunk. Failed to find a SourceLocation with the key: " ++ show (getSourceLocationId sid)
 
--- | Generic implementation to turn 'BinaryCallStackMessage' into the much richer
+-- | Generic implementation to turn 'CallStackChunk' into the much richer
 -- 'CallStack'.
-hydrateEventlogCallStackMessage :: SymbolTableReader -> BinaryCallStackMessage -> (CallStack, [BinaryCallStackDecodeError])
+hydrateEventlogCallStackMessage :: SymbolTableReader -> CallStackChunk -> (CallStack, [BinaryCallStackDecodeError])
 hydrateEventlogCallStackMessage decodeTable msg =
   let
     decodeItem :: BinaryStackItem -> Either BinaryCallStackDecodeError StackItem
@@ -47,12 +47,12 @@ hydrateEventlogCallStackMessage decodeTable msg =
               (lookupSourceLocationId decodeTable srcLocId)
         pure $ UserAnnotation str srcLoc
 
-    itemsOrErros = map decodeItem (binaryCallStack msg)
+    itemsOrErros = map decodeItem (callStackChunk msg)
     (errors, items) = partitionEithers itemsOrErros
   in
     ( MkCallStack
-        { callCapabilityId = binaryCallCapabilityId msg
-        , callThreadId = binaryCallThreadId msg
+        { callCapabilityId = callStackChunkCapabilityId msg
+        , callThreadId = callStackChunkThreadId msg
         , callStack = items
         }
     , errors

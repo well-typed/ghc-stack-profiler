@@ -9,7 +9,7 @@ module GHC.Stack.Profiler.Core (
 
   -- * Binary Eventlog Protocol Messages
   Message (..),
-  BinaryCallStackMessage (..),
+  CallStackChunk (..),
   BinaryStringMessage (..),
   BinarySourceLocationMessage (..),
   BinaryStackItem (..),
@@ -69,7 +69,7 @@ import GHC.Stack.Profiler.Core.Dehydrate (
   getKnownStrings,
  )
 import GHC.Stack.Profiler.Core.Eventlog (
-  BinaryCallStackMessage (..),
+  CallStackChunk (..),
   BinarySourceLocationMessage (..),
   BinaryStackItem (..),
   BinaryStringMessage (..),
