@@ -47,6 +47,16 @@ module GHC.Stack.Profiler.Core (
   insertTextMessage,
 ) where
 
+import GHC.Stack.Profiler.Core.CallStack (
+  BinaryCallStackDecodeError (..),
+  CallStackMessage (..),
+  StackItem (..),
+  catCallStackMessage,
+  chunkCallStackMessage_,
+  dehydrateCallStackMessage,
+  deserializeEventlogMessage,
+  hydrateEventlogCallStackMessage,
+ )
 import GHC.Stack.Profiler.Core.Eventlog (
   BinaryCallStackMessage (..),
   BinaryEventlogMessage (..),
@@ -77,14 +87,4 @@ import GHC.Stack.Profiler.Core.SymbolTable (
   insertSourceLocationMessage,
   insertTextMessage,
   mkIntMapSymbolTableReader,
- )
-import GHC.Stack.Profiler.Core.ThreadSample (
-  BinaryCallStackDecodeError (..),
-  CallStackMessage (..),
-  StackItem (..),
-  catCallStackMessage,
-  chunkCallStackMessage_,
-  dehydrateCallStackMessage,
-  deserializeEventlogMessage,
-  hydrateEventlogCallStackMessage,
  )
