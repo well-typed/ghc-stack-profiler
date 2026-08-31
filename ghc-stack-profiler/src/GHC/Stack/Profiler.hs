@@ -44,8 +44,8 @@ import qualified Debug.Trace
 import qualified Debug.Trace.Binary.Compat as Compat
 
 import GHC.Stack.Profiler.Commands (sendStopProfilingMessage)
-import GHC.Stack.Profiler.Core.Eventlog
-import GHC.Stack.Profiler.Core.ThreadSample
+import GHC.Stack.Profiler.Core (CallStackMessage (..), ThreadSample (..))
+import qualified GHC.Stack.Profiler.Core as GSPC
 import GHC.Stack.Profiler.Decode
 import qualified GHC.Stack.Profiler.Decode as Decode
 import qualified GHC.Stack.Profiler.Eventlog.Socket as EventlogSocket
@@ -259,7 +259,7 @@ sampleThread tid = do
         Just $
           ThreadSample
             { threadSampleId = tid
-            , threadSampleCapability = MkCapabilityId $ fromIntegral cap
+            , threadSampleCapability = GSPC.MkCapabilityId $ fromIntegral cap
             , threadSampleStackSnapshot = stack
             }
     False -> do

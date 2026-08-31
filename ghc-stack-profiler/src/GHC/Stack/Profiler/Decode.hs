@@ -14,16 +14,11 @@ import Data.Binary
 import Data.Binary.Put
 import qualified Data.ByteString.Lazy as LBS
 import qualified Data.List.NonEmpty as NonEmpty
-
-import GHC.Conc.Sync (fromThreadId)
-
 import Control.Exception (assert)
-import GHC.Stack.Profiler.Core.Eventlog
-import GHC.Stack.Profiler.Core.SymbolTable
-import GHC.Stack.Profiler.Core.SourceLocation
-import GHC.Stack.Profiler.Core.ThreadSample
+import GHC.Stack.Profiler.Core
 import GHC.Stack.Profiler.Stack.Decode (decodeStackWithIpProvId)
 import GHC.Stack.Profiler.SymbolTable
+import GHC.Conc.Sync (fromThreadId)
 
 threadSampleToCallStackMessage :: ThreadSample -> IO CallStackMessage
 threadSampleToCallStackMessage sample = do

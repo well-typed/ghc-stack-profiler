@@ -25,7 +25,7 @@ module GHC.Stack.Profiler.Core.ThreadSample (
   lookupTextMessage,
 ) where
 
-import Control.Concurrent
+import Control.Concurrent (ThreadId)
 import Control.Exception (Exception (..))
 import Control.Monad (when)
 import Control.Monad.Trans.State.Strict (State, runState)
@@ -40,7 +40,6 @@ import qualified Data.List.NonEmpty as NonEmpty
 import Data.Text (Text)
 import qualified Data.Text as Text
 import GHC.Generics
-
 import GHC.Stack.CloneStack (StackSnapshot)
 import GHC.Stack.Profiler.Core.Eventlog
 import GHC.Stack.Profiler.Core.SourceLocation

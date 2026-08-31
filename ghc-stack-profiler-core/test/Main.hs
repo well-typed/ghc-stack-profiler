@@ -7,8 +7,7 @@ import Data.Binary.Put
 import qualified Data.ByteString.Lazy as LBS
 import qualified Data.List.NonEmpty as NonEmpty
 import Data.Maybe
-import GHC.Stack.Profiler.Core.Eventlog
-import GHC.Stack.Profiler.Core.ThreadSample
+import GHC.Stack.Profiler.Core
 import Test.Tasty
 import Test.Tasty.QuickCheck
 

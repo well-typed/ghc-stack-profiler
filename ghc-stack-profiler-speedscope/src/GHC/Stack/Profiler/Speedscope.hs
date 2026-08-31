@@ -29,9 +29,7 @@ import Data.Version (Version, makeVersion)
 import Data.Word (Word64)
 import qualified GHC.RTS.Events as E
 import qualified GHC.RTS.Events.Incremental as E
-import qualified GHC.Stack.Profiler.Core.Eventlog as GSP
-import qualified GHC.Stack.Profiler.Core.SymbolTable as GSP
-import qualified GHC.Stack.Profiler.Core.ThreadSample as GSP
+import qualified GHC.Stack.Profiler.Core as GSPC
 import GHC.Stack.Profiler.Speedscope.Options
 import GHC.Stack.Profiler.Speedscope.Types
 import qualified IpeDB.Database as DB
@@ -189,20 +187,20 @@ handleEvent infoProvTable st ev =
     E.RtsIdentifier{rtsident} ->
       pure st{maybeRtsVersion = parseIdent rtsident}
     E.UserBinaryMessage bs ->
-      case GSP.deserializeEventlogMessage $ BSL.fromStrict bs of
+      case GSPC.deserializeEventlogMessage $ BSL.fromStrict bs of
         Left _err ->
           pure st
         Right evMsg -> case evMsg of
-          GSP.CallStackFinal msg -> do
+          GSPC.CallStackFinal msg -> do
             let
               (callStackMessage, elProf1) = hydrateBinaryEventlog st msg
             processCallStackMessage infoProvTable elProf1 callStackMessage
-          GSP.CallStackChunk msg ->
+          GSPC.CallStackChunk msg ->
             pure st{current_callstack_chunks = msg : current_callstack_chunks st}
-          GSP.StringDef msg ->
-            pure st{hydration_table = GSP.insertTextMessage msg (hydration_table st)}
-          GSP.SourceLocationDef msg ->
-            case GSP.insertSourceLocationMessage msg (hydration_table st) of
+          GSPC.StringDef msg ->
+            pure st{hydration_table = GSPC.insertTextMessage msg (hydration_table st)}
+          GSPC.SourceLocationDef msg ->
+            case GSPC.insertSourceLocationMessage msg (hydration_table st) of
               Left err ->
                 pure $ addDecodingErrorsForStack [fromMissingKeyError err] st
               Right newTable ->
@@ -213,9 +211,9 @@ handleEvent infoProvTable st ev =
 processCallStackMessage ::
   DB.Table IP.InfoProvId IP.InfoProv ->
   EventlogProfileState ->
-  GSP.CallStackMessage ->
+  GSPC.CallStackMessage ->
   IO EventlogProfileState
-processCallStackMessage infoProvTable st0 GSP.MkCallStackMessage{callThreadId, callCapabilityId, callStack} = do
+processCallStackMessage infoProvTable st0 GSPC.MkCallStackMessage{callThreadId, callCapabilityId, callStack} = do
   stackFramesOrErrors <- traverse (toStackFrame infoProvTable) callStack
   let
     (processingErrors, stackFrames) = partitionEithers stackFramesOrErrors
@@ -231,7 +229,7 @@ processCallStackMessage infoProvTable st0 GSP.MkCallStackMessage{callThreadId, c
     st2 = addDecodingErrorsForStack processingErrors st1
   pure $ st2{samples = sample : st2.samples}
 
-hydrateBinaryEventlog :: EventlogProfileState -> GSP.BinaryCallStackMessage -> (GSP.CallStackMessage, EventlogProfileState)
+hydrateBinaryEventlog :: EventlogProfileState -> GSPC.BinaryCallStackMessage -> (GSPC.CallStackMessage, EventlogProfileState)
 hydrateBinaryEventlog st msg =
   let
     chunks = current_callstack_chunks st
@@ -254,10 +252,10 @@ hydrateBinaryEventlog st msg =
     --    [2,1] [4,3] [6,5]
     -- 4. 'catCallStackMessage' reverses the individual callstack chunks to be the inverse of 'chunkCallStackMessage'
     orderedChunks = NonEmpty.reverse $ msg :| chunks
-    fullBinaryCallStackMessage = GSP.catCallStackMessage orderedChunks
+    fullBinaryCallStackMessage = GSPC.catCallStackMessage orderedChunks
     (callStackMessage, errs) =
-      GSP.hydrateEventlogCallStackMessage
-        (GSP.mkIntMapSymbolTableReader (hydration_table st))
+      GSPC.hydrateEventlogCallStackMessage
+        (GSPC.mkIntMapSymbolTableReader (hydration_table st))
         fullBinaryCallStackMessage
   in
     ( callStackMessage
@@ -269,16 +267,16 @@ hydrateBinaryEventlog st msg =
 -- | Convert a `StackItem` into a `StackFrame`.
 toStackFrame ::
   DB.Table IP.InfoProvId IP.InfoProv ->
-  GSP.StackItem ->
+  GSPC.StackItem ->
   IO (Either EventlogError StackFrame)
 toStackFrame infoProvTable = \case
-  GSP.IpeId (toInfoProvId -> infoProvId) -> do
+  GSPC.IpeId (toInfoProvId -> infoProvId) -> do
     maybeInfoProv <- DB.lookup infoProvTable infoProvId
     pure $
       case maybeInfoProv of
         Nothing -> Left $! UnknownInfoProvId infoProvId
         Just infoProv -> Right $! StackFrameInfoProv infoProv
-  GSP.UserAnnotation (Text.pack -> message) (toSrcLoc -> srcLoc) ->
+  GSPC.UserAnnotation (Text.pack -> message) (toSrcLoc -> srcLoc) ->
     pure . Right $! StackFrameMessage message srcLoc
 
 -- | Ensure a `StackFrame` has a `StackFrameId` in the `EventlogProfileState`.
@@ -326,10 +324,10 @@ data EventlogProfileState = EventlogProfileState
   -- ^ A unique counter for stack frames.
   , samples :: [Sample]
   -- ^ All samples in the reverse order of finding them in the eventlog.
-  , hydration_table :: !GSP.IntMapTable
+  , hydration_table :: !GSPC.IntMapTable
   -- ^ The symbol table storing 'Text' and 'SourceLocation' symbols
   -- for hydrating a 'BinaryCallStackMessage' into a 'CallStackMessage'.
-  , current_callstack_chunks :: [GSP.BinaryCallStackMessage]
+  , current_callstack_chunks :: [GSPC.BinaryCallStackMessage]
   -- ^ Chunks of 'BinaryCallStackMessage' we are currently decoding.
   -- All chunks are assumed to be from the same callstack and will be decoded once a
   -- 'CallStackFinal' message is encountered.
@@ -344,7 +342,7 @@ emptyEventlogProfileState =
     , stackFrames = Map.empty
     , stackFrameCounter = 0
     , samples = []
-    , hydration_table = GSP.emptyIntMapTable
+    , hydration_table = GSPC.emptyIntMapTable
     , current_callstack_chunks = []
     , processingErrors = []
     }
@@ -360,19 +358,19 @@ addDecodingErrorsForStack errs elProf
 
 data EventlogError
   = UnknownInfoProvId IP.InfoProvId
-  | UnknownStringId GSP.StringId
-  | UnknownSrcLocId GSP.SourceLocationId
-  | SourceLocationPartUndefined GSP.SourceLocationId GSP.StringId
+  | UnknownStringId GSPC.StringId
+  | UnknownSrcLocId GSPC.SourceLocationId
+  | SourceLocationPartUndefined GSPC.SourceLocationId GSPC.StringId
   deriving (Show, Eq, Ord)
 
-fromBinaryError :: GSP.BinaryCallStackDecodeError -> EventlogError
+fromBinaryError :: GSPC.BinaryCallStackDecodeError -> EventlogError
 fromBinaryError = \case
-  GSP.StringIdNotFound sid -> UnknownStringId sid
-  GSP.SourceLocationIdNotFound sid -> UnknownSrcLocId sid
+  GSPC.StringIdNotFound sid -> UnknownStringId sid
+  GSPC.SourceLocationIdNotFound sid -> UnknownSrcLocId sid
 
-fromMissingKeyError :: GSP.MissingKeyError -> EventlogError
+fromMissingKeyError :: GSPC.MissingKeyError -> EventlogError
 fromMissingKeyError = \case
-  GSP.KeyStringIdNotFound sourceLocId stringId -> SourceLocationPartUndefined sourceLocId stringId
+  GSPC.KeyStringIdNotFound sourceLocId stringId -> SourceLocationPartUndefined sourceLocId stringId
 
 prettyEventlogError :: EventlogError -> String
 prettyEventlogError = \case
@@ -425,7 +423,7 @@ toSpeedscopeProfiles programName samples aggregationMode =
       NoAggregation -> [(1, toSingleProfileSample <$> reverse samples)]
    where
     toThreadSample :: Sample -> (Word64, [Int])
-    toThreadSample sample = (sample.sampleThreadId, toSingleProfileSample sample)
+    toThreadSample sample = (fromIntegral . sampleThreadId $ sample, toSingleProfileSample sample)
 
     toCapabilitySample :: Sample -> (Word64, [Int])
     toCapabilitySample sample = (coerce sample.sampleCapabilityId, toSingleProfileSample sample)

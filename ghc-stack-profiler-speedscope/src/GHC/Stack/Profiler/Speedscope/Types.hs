@@ -3,8 +3,7 @@ module GHC.Stack.Profiler.Speedscope.Types where
 import Data.Text (Text)
 import qualified Data.Text as Text
 import Data.Word (Word64)
-import qualified GHC.Stack.Profiler.Core.Eventlog as GSP (CapabilityId, IpeId (..))
-import qualified GHC.Stack.Profiler.Core.SourceLocation as GSP (SourceLocation (..))
+import qualified GHC.Stack.Profiler.Core as GSP (CapabilityId, IpeId (..), SourceLocation (..))
 import IpeDB.Types.InfoProv (InfoProv (..), InfoProvId (..))
 import IpeDB.Types.SrcLoc (Point (..), Range (..), SrcLoc (..))
 
