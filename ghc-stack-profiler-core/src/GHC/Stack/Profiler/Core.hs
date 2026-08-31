@@ -49,7 +49,6 @@ import GHC.Stack.Profiler.Core.CallStack (
   catCallStackMessage,
   chunkCallStackMessage_,
   dehydrateCallStackMessage,
-  deserializeEventlogMessage,
   hydrateEventlogCallStackMessage,
  )
 import GHC.Stack.Profiler.Core.Eventlog (
@@ -65,6 +64,7 @@ import GHC.Stack.Profiler.Core.Eventlog (
   ThreadId (..),
   callStackSizeLimit,
   callStackSizeLimit_,
+  deserializeEventlogMessage,
   eventlogBufferSize,
  )
 import GHC.Stack.Profiler.Core.SourceLocation (
