@@ -1,4 +1,5 @@
 dist-newstyle/
+haddocks/
 cabal.project.local
 *.eventlog
 *.eventlog.json
