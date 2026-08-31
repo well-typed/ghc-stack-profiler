@@ -31,7 +31,6 @@ import Data.Coerce (coerce)
 import qualified Data.List as List
 import Data.Text (Text)
 import GHC.Generics
-
 import GHC.Stack.Profiler.Core.Util
 
 -- ----------------------------------------------------------------------------
@@ -44,29 +43,45 @@ import GHC.Stack.Profiler.Core.Util
 --
 -- @
 -- MESSAGE
---  := FF CA (stack: STACK>
---   | FF CB (prefix: STACK>
---   | FF CC (stringId: 'Word64') (string: CStringLen)
+--  := FF CA (stack: STACK)
+--   | FF CB (stackPrefix: STACK)
+--   | FF CC (strId: 'Word64') (strLen: STRLEN)
 --   | FF CD (srcLocId: 'Word64') (row: 'Word32') (col: 'Word32') (functionId: 'Word64') (filename: 'Word64')
 --
 -- STACK
---  := (capability: 'Word32') (threadId: 'Word32') (length: 'Int16') (ENTRY)+
---   # check that length < (2^16-8) / 9
+--  := (capability: 'Word32') (threadId: 'Word32') (length: 'Word16') (entries: ENTRY{length})
+--   # NOTE: length must be smaller than (2^16 - 8) / 9
 --
 -- ENTRY
 --  := 01 (ipe: 'Word64')
---   | 02 (stringId: 'Word64')
---   | 03 (stringId: 'Word64') (srcLocId: 'Word64')
+--   | 02 (strId: 'Word64')
+--   | 03 (strId: 'Word64') (srcLocId: 'Word64')
 --
--- CStringLen
---   := (length: 'Int16') (Char)+
---    # check that length < 2^16-8
+-- STRLEN
+--   := (length: 'Word16') (string: 'Char'{length})
+--   # NOTE: length must be smaller than 2^16 - 8
 -- @
 data BinaryEventlogMessage
-  = CallStackFinal !BinaryCallStackMessage
-  | CallStackChunk !BinaryCallStackMessage
-  | StringDef !BinaryStringMessage
-  | SourceLocationDef !BinarySourceLocationMessage
+  = -- | A chunk of the call-stack, indicated by the prefix @FF CA@.
+    --
+    --   This variant indicates that no further 'CallStackChunk' or 'CallStackFinal' will follow.
+    CallStackFinal !BinaryCallStackMessage
+  | -- | A chunk of the call-stack, indicated by the prefix @FF CB@.
+    --
+    --   This variant indicates that another 'CallStackChunk' or 'CallStackFinal' will follow.
+    CallStackChunk !BinaryCallStackMessage
+  | -- | A string definition, indicated by the prefix @FF CC@.
+    --
+    --   This messages associates the string ID @strId@ with the string
+    --   @strLen@, for future use in call-stack messages and source location
+    --   definitions.
+    StringDef !BinaryStringMessage
+  | -- | A source location definition, indicated by the prefix @FF CD@.
+    --
+    --   This message associates the source location ID @srcLocId@ with the
+    --   source location specified by @row@, @col@, @functionId@, and
+    --   @filename@, for future use in call-stack messages.
+    SourceLocationDef !BinarySourceLocationMessage
   deriving (Eq, Ord, Show, Read, Generic)
 
 data BinaryCallStackMessage = MkBinaryCallStackMessage
