@@ -211,9 +211,9 @@ handleEvent infoProvTable st ev =
 processCallStackMessage ::
   DB.Table IP.InfoProvId IP.InfoProv ->
   EventlogProfileState ->
-  GSPC.CallStackMessage ->
+  GSPC.CallStack ->
   IO EventlogProfileState
-processCallStackMessage infoProvTable st0 GSPC.MkCallStackMessage{callThreadId, callCapabilityId, callStack} = do
+processCallStackMessage infoProvTable st0 GSPC.MkCallStack{callThreadId, callCapabilityId, callStack} = do
   stackFramesOrErrors <- traverse (toStackFrame infoProvTable) callStack
   let
     (processingErrors, stackFrames) = partitionEithers stackFramesOrErrors
@@ -229,7 +229,7 @@ processCallStackMessage infoProvTable st0 GSPC.MkCallStackMessage{callThreadId, 
     st2 = addDecodingErrorsForStack processingErrors st1
   pure $ st2{samples = sample : st2.samples}
 
-hydrateBinaryEventlog :: EventlogProfileState -> GSPC.BinaryCallStackMessage -> (GSPC.CallStackMessage, EventlogProfileState)
+hydrateBinaryEventlog :: EventlogProfileState -> GSPC.BinaryCallStackMessage -> (GSPC.CallStack, EventlogProfileState)
 hydrateBinaryEventlog st msg =
   let
     chunks = current_callstack_chunks st
@@ -326,7 +326,7 @@ data EventlogProfileState = EventlogProfileState
   -- ^ All samples in the reverse order of finding them in the eventlog.
   , hydration_table :: !GSPC.IntMapTable
   -- ^ The symbol table storing 'Text' and 'SourceLocation' symbols
-  -- for hydrating a 'BinaryCallStackMessage' into a 'CallStackMessage'.
+  -- for hydrating a 'BinaryCallStackMessage' into a 'CallStack'.
   , current_callstack_chunks :: [GSPC.BinaryCallStackMessage]
   -- ^ Chunks of 'BinaryCallStackMessage' we are currently decoding.
   -- All chunks are assumed to be from the same callstack and will be decoded once a
