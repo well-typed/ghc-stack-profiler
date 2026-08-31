@@ -44,7 +44,7 @@ import qualified Debug.Trace
 import qualified Debug.Trace.Binary.Compat as Compat
 
 import GHC.Stack.Profiler.Commands (sendStopProfilingMessage)
-import GHC.Stack.Profiler.Core (CallStackMessage (..))
+import GHC.Stack.Profiler.Core (CallStack (..))
 import qualified GHC.Stack.Profiler.Core as GSPC
 import GHC.Stack.Profiler.Decode
 import qualified GHC.Stack.Profiler.Decode as Decode
@@ -215,8 +215,8 @@ runStackProfilerSample sampler serialiser = do
 
 data CallStackSerialiser = MkCallStackSerialiser
   { sampleCallStack :: ThreadId -> IO (Maybe ThreadSample)
-  , decodeThreadSample :: ThreadSample -> IO CallStackMessage
-  , serialiseCallStackMessage :: CallStackMessage -> IO ()
+  , decodeThreadSample :: ThreadSample -> IO CallStack
+  , serialiseCallStackMessage :: CallStack -> IO ()
   }
 
 -- | If the thread's callstack can be sampled, we serialise the sample

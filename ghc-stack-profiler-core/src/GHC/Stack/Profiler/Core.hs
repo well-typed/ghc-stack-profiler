@@ -1,6 +1,6 @@
 module GHC.Stack.Profiler.Core (
   -- * Eventlog Protocol Messages
-  CallStackMessage (..),
+  CallStack (..),
   ThreadId (..),
   CapabilityId (..),
   StackItem (..),
@@ -55,7 +55,7 @@ module GHC.Stack.Profiler.Core (
 ) where
 
 import GHC.Stack.Profiler.Core.CallStack (
-  CallStackMessage (..),
+  CallStack (..),
   SourceLocation (..),
   StackItem (..),
  )

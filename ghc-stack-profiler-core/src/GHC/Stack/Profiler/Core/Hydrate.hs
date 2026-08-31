@@ -24,8 +24,8 @@ instance Exception BinaryCallStackDecodeError where
       "Failed to decode a BinaryCallStackMessage. Failed to find a SourceLocation with the key: " ++ show (getSourceLocationId sid)
 
 -- | Generic implementation to turn 'BinaryCallStackMessage' into the much richer
--- 'CallStackMessage'.
-hydrateEventlogCallStackMessage :: SymbolTableReader -> BinaryCallStackMessage -> (CallStackMessage, [BinaryCallStackDecodeError])
+-- 'CallStack'.
+hydrateEventlogCallStackMessage :: SymbolTableReader -> BinaryCallStackMessage -> (CallStack, [BinaryCallStackDecodeError])
 hydrateEventlogCallStackMessage decodeTable msg =
   let
     decodeItem :: BinaryStackItem -> Either BinaryCallStackDecodeError StackItem
@@ -50,7 +50,7 @@ hydrateEventlogCallStackMessage decodeTable msg =
     itemsOrErros = map decodeItem (binaryCallStack msg)
     (errors, items) = partitionEithers itemsOrErros
   in
-    ( MkCallStackMessage
+    ( MkCallStack
         { callCapabilityId = binaryCallCapabilityId msg
         , callThreadId = binaryCallThreadId msg
         , callStack = items
@@ -59,7 +59,7 @@ hydrateEventlogCallStackMessage decodeTable msg =
     )
 
 -- | Implementation agnostic symbol table reader helping consumers to decode
--- 'BinaryEventlogMessage's into a 'CallStackMessage'.
+-- 'BinaryEventlogMessage's into a 'CallStack'.
 --
 -- As during deserialisation, we do not discover new Messages, the abstract 'SymbolTableReader'
 -- doesn't need to thread the implementation through the lookup operations.

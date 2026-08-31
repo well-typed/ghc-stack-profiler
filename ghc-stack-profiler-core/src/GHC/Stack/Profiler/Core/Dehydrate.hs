@@ -15,7 +15,7 @@ import GHC.Stack.Profiler.Core.CallStack
 import GHC.Stack.Profiler.Core.Eventlog
 import GHC.Stack.Profiler.Core.Util
 
--- | Generic implementation to turn 'CallStackMessage' into '[BinaryEventlogMessage]'.
+-- | Generic implementation to turn 'CallStack' into '[BinaryEventlogMessage]'.
 --
 -- Replaces already encountered text or source location information with unique ids.
 -- If new text or source location messages are encountered, they are inserted into
@@ -33,7 +33,7 @@ import GHC.Stack.Profiler.Core.Util
 dehydrateCallStackMessage ::
   forall table.
   SymbolTableWriter table ->
-  CallStackMessage ->
+  CallStack ->
   ([BinaryEventlogMessage], SymbolTableWriter table)
 dehydrateCallStackMessage msgTbl0 msg =
   let
@@ -197,9 +197,9 @@ lookupSourceLocationMessage s = do
   pure sid
 
 -- | Implementation agnostic symbol table supposed to be used to deduplicate symbols
--- in 'CallStackMessage'.
+-- in 'CallStack'.
 --
--- When transforming 'CallStackMessage' to ['BinaryEventlogMessage'] we replace some
+-- When transforming 'CallStack' to ['BinaryEventlogMessage'] we replace some
 -- symbols with identifiers.
 -- In particular arbitrary length symbols, such as 'Text's and 'SourceLocation's.
 -- As these symbols are discovered while encoding the callstack, the 'SymbolTableWriter'

@@ -36,7 +36,7 @@ data ThreadSample = ThreadSample
   }
   deriving (Generic)
 
-threadSampleToCallStackMessage :: ThreadSample -> IO CallStackMessage
+threadSampleToCallStackMessage :: ThreadSample -> IO CallStack
 threadSampleToCallStackMessage sample = do
   frames <- decodeStackWithIpProvId $ threadSampleStackSnapshot sample
   let
@@ -44,13 +44,13 @@ threadSampleToCallStackMessage sample = do
     callStackItems = fmap NonEmpty.head $ NonEmpty.group frames
 
   pure
-    MkCallStackMessage
+    MkCallStack
       { callThreadId = threadSampleId sample
       , callCapabilityId = threadSampleCapability sample
       , callStack = callStackItems
       }
 
-serializeCallStackMessage :: StackSymbolTable -> CallStackMessage -> STM [BinaryEventlogMessage]
+serializeCallStackMessage :: StackSymbolTable -> CallStack -> STM [BinaryEventlogMessage]
 serializeCallStackMessage tableRef callStackMessage = do
   table <- readSymbolTable tableRef
   let

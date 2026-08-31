@@ -2,7 +2,7 @@
 
 module GHC.Stack.Profiler.Core.CallStack (
   -- * Serialisable 'ThreadSample'
-  CallStackMessage (..),
+  CallStack (..),
   StackItem (..),
   SourceLocation (..),
 ) where
@@ -17,7 +17,7 @@ import GHC.Stack.Profiler.Core.Eventlog
 -- ----------------------------------------------------------------------------
 
 -- | A decoded rts callstack that can be serialised to the EventLog.
-data CallStackMessage = MkCallStackMessage
+data CallStack = MkCallStack
   { callThreadId :: !ThreadId
   , callCapabilityId :: !CapabilityId
   , callStack :: [StackItem]
