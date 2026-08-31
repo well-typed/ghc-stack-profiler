@@ -120,11 +120,11 @@ insertTextMessage msg tbl =
     }
 
 {-# INLINEABLE insertSourceLocationMessage #-}
-insertSourceLocationMessage :: BinarySourceLocationMessage -> IntMapTable -> Either MissingKeyError IntMapTable
+insertSourceLocationMessage :: SourceLocationDef -> IntMapTable -> Either MissingKeyError IntMapTable
 insertSourceLocationMessage msg tbl = do
   let
-    srcLocId = binarySourceLocationMessageId msg
-    fileId = binarySourceLocationFilename msg
+    srcLocId = sourceLocationDefId msg
+    fileId = sourceLocationDefFilename msg
 
   fileName <-
     maybe (Left $ KeyStringIdNotFound srcLocId fileId) Right $ lookupTextMessage fileId tbl
@@ -140,8 +140,8 @@ insertSourceLocationMessage msg tbl = do
  where
   mkSourceLocation fileName =
     MkSourceLocation
-      { line = binarySourceLocationRow msg
-      , column = binarySourceLocationColumn msg
+      { line = sourceLocationDefRow msg
+      , column = sourceLocationDefColumn msg
       , fileName = fileName
       }
 

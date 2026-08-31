@@ -3,7 +3,7 @@ module GHC.Stack.Profiler.Core.Eventlog (
   Message (..),
   CallStackChunk (..),
   StringDef (..),
-  BinarySourceLocationMessage (..),
+  SourceLocationDef (..),
   BinaryStackItem (..),
   ThreadId (..),
   CapabilityId (..),
@@ -91,7 +91,7 @@ data Message
     --   This message associates the source location ID @srcLocId@ with the
     --   source location specified by @row@, @col@, @functionId@, and
     --   @filename@, for future use in call-stack messages.
-    SourceLocationDef !BinarySourceLocationMessage
+    SourceLocationDef !SourceLocationDef
   deriving (Eq, Ord, Show, Read, Generic)
 
 data CallStackChunk = MkCallStackChunk
@@ -107,11 +107,11 @@ data StringDef = MkStringDef
   }
   deriving (Eq, Ord, Show, Read, Generic)
 
-data BinarySourceLocationMessage = MkBinarySourceLocationMessage
-  { binarySourceLocationMessageId :: {-# UNPACK #-} !SourceLocationId
-  , binarySourceLocationRow :: {-# UNPACK #-} !Word32
-  , binarySourceLocationColumn :: {-# UNPACK #-} !Word32
-  , binarySourceLocationFilename :: {-# UNPACK #-} !StringId
+data SourceLocationDef = MkSourceLocationDef
+  { sourceLocationDefId :: {-# UNPACK #-} !SourceLocationId
+  , sourceLocationDefRow :: {-# UNPACK #-} !Word32
+  , sourceLocationDefColumn :: {-# UNPACK #-} !Word32
+  , sourceLocationDefFilename :: {-# UNPACK #-} !StringId
   }
   deriving (Eq, Ord, Show, Read, Generic)
 
@@ -311,15 +311,15 @@ instance Binary BinaryStackItem where
       0x3 -> BinaryMessage <$> get <*> (Just <$> get)
       n -> fail $ "StackItem: Unexpected tag byte encounter: " <> show n
 
-instance Binary BinarySourceLocationMessage where
+instance Binary SourceLocationDef where
   put msg = do
-    put $ binarySourceLocationMessageId msg
-    putWord32 (binarySourceLocationRow msg)
-    putWord32 (binarySourceLocationColumn msg)
-    put (binarySourceLocationFilename msg)
+    put $ sourceLocationDefId msg
+    putWord32 (sourceLocationDefRow msg)
+    putWord32 (sourceLocationDefColumn msg)
+    put (sourceLocationDefFilename msg)
 
   get = do
-    MkBinarySourceLocationMessage
+    MkSourceLocationDef
       <$> get
       <*> getWord32
       <*> getWord32

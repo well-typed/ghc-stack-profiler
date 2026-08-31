@@ -75,7 +75,7 @@ initMessages symbolTable =
   in
     serializeBinaryEventlogMessages binaryEventlogMessages
 
-binaryEventlogDefinitions :: SymbolTableWriter MapTable -> ([StringDef], [BinarySourceLocationMessage])
+binaryEventlogDefinitions :: SymbolTableWriter MapTable -> ([StringDef], [SourceLocationDef])
 binaryEventlogDefinitions table =
   let
     knownStrings = getKnownStrings $ writerTable table
@@ -91,16 +91,16 @@ binaryEventlogDefinitions table =
     , srcLocDefs
     )
  where
-  go :: SourceLocationId -> SourceLocation -> BinarySourceLocationMessage
+  go :: SourceLocationId -> SourceLocation -> SourceLocationDef
   go sid s =
     let
       (fileId, newFileName, _) = lookupOrInsertText table (writerTable table) (fileName s)
     in
       -- These should always be found
       assert (not newFileName) $
-        MkBinarySourceLocationMessage
-          { binarySourceLocationMessageId = sid
-          , binarySourceLocationRow = line s
-          , binarySourceLocationColumn = column s
-          , binarySourceLocationFilename = fileId
+        MkSourceLocationDef
+          { sourceLocationDefId = sid
+          , sourceLocationDefRow = line s
+          , sourceLocationDefColumn = column s
+          , sourceLocationDefFilename = fileId
           }
