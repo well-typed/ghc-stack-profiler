@@ -34,11 +34,11 @@ import Data.Binary.Get (runGetOrFail)
 import qualified Data.ByteString.Lazy as LBS
 import Data.Coerce (coerce)
 import qualified Data.List as List
+import Data.List.NonEmpty (NonEmpty)
+import qualified Data.List.NonEmpty as NonEmpty
 import Data.Text (Text)
 import GHC.Generics
 import GHC.Stack.Profiler.Core.Util
-import Data.List.NonEmpty (NonEmpty)
-import qualified Data.List.NonEmpty as NonEmpty
 
 -- ----------------------------------------------------------------------------
 -- Eventlog Messages
@@ -50,23 +50,26 @@ import qualified Data.List.NonEmpty as NonEmpty
 --
 -- @
 -- MESSAGE
---  := FF CA (stack: STACK)
---   | FF CB (stackPrefix: STACK)
---   | FF CC (strId: 'Word64') (strLen: STRLEN)
---   | FF CD (srcLocId: 'Word64') (row: 'Word32') (col: 'Word32') (functionId: 'Word64') (filename: 'Word64')
+--  := FF CA (stackFinal: CALL_STACK)
+--   | FF CB (stackChunk: CALL_STACK)
+--   | FF CC (strDef: STR_DEF)
+--   | FF CD (srcLocDef: SRC_LOC_DEF)
 --
--- STACK
---  := (capability: 'Word32') (threadId: 'Word32') (length: 'Word16') (entries: ENTRY{length})
---   # NOTE: length must be smaller than (2^16 - 8) / 9
+-- CALL_STACK
+--  := (capability: 'Word32') (threadId: 'Word32') (callStackLen: 'Word16') (callStack: CALL_STACK_FRAME{callStackLen})
+--  -- NOTE: callStackLen must be smaller than (2^16 - 8) / 9
 --
--- ENTRY
+-- CALL_STACK_FRAME
 --  := 01 (ipe: 'Word64')
 --   | 02 (strId: 'Word64')
 --   | 03 (strId: 'Word64') (srcLocId: 'Word64')
 --
--- STRLEN
---   := (length: 'Word16') (string: 'Char'{length})
---   # NOTE: length must be smaller than 2^16 - 8
+-- STR_DEF
+--  := (strId: 'Word64') (strLen: 'Word16') (str: 'Char'{strLen})
+--  -- NOTE: strLen must be smaller than 2^16 - 8
+--
+-- SRC_LOC_DEF
+--  := (srcLocId: 'Word64') (row: 'Word32') (col: 'Word32') (functionId: 'Word64') (filename: 'Word64')
 -- @
 data BinaryEventlogMessage
   = -- | A chunk of the call-stack, indicated by the prefix @FF CA@.
