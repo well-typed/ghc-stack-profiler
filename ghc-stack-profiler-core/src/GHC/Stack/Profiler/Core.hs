@@ -16,19 +16,7 @@ module GHC.Stack.Profiler.Core (
   StringId (..),
   SourceLocationId (..),
 
-  -- * Serialisation
-  dehydrateCallStackMessage,
-  SymbolTableWriter (..),
-  MapTable,
-  emptyMapSymbolTableWriter,
-  getKnownStrings,
-  getKnownSourceLocations,
-  callStackSizeLimit,
-  callStackSizeLimit_,
-  eventlogBufferSize,
-  chunkCallStackMessage_,
-
-  -- * Deserialisation
+  -- * Decode
   SymbolTableReader (..),
   IntMapTable,
   BinaryCallStackDecodeError (..),
@@ -40,16 +28,33 @@ module GHC.Stack.Profiler.Core (
   emptyIntMapTable,
   insertSourceLocationMessage,
   insertTextMessage,
+
+  -- * Encode
+  dehydrateCallStackMessage,
+  SymbolTableWriter (..),
+  MapTable,
+  emptyMapSymbolTableWriter,
+  getKnownStrings,
+  getKnownSourceLocations,
+  callStackSizeLimit,
+  callStackSizeLimit_,
+  eventlogBufferSize,
+  chunkCallStackMessage_,
 ) where
 
 import GHC.Stack.Profiler.Core.CallStack (
-  BinaryCallStackDecodeError (..),
   CallStackMessage (..),
+  SourceLocation (..),
   StackItem (..),
-  catCallStackMessage,
+ )
+import GHC.Stack.Profiler.Core.Dehydrate (
+  MapTable,
+  SymbolTableWriter (..),
   chunkCallStackMessage_,
   dehydrateCallStackMessage,
-  hydrateEventlogCallStackMessage,
+  emptyMapSymbolTableWriter,
+  getKnownSourceLocations,
+  getKnownStrings,
  )
 import GHC.Stack.Profiler.Core.Eventlog (
   BinaryCallStackMessage (..),
@@ -67,19 +72,14 @@ import GHC.Stack.Profiler.Core.Eventlog (
   deserializeEventlogMessage,
   eventlogBufferSize,
  )
-import GHC.Stack.Profiler.Core.SourceLocation (
-  SourceLocation (..),
- )
-import GHC.Stack.Profiler.Core.SymbolTable (
+import GHC.Stack.Profiler.Core.Hydrate (
+  BinaryCallStackDecodeError (..),
   IntMapTable,
-  MapTable,
   MissingKeyError (..),
   SymbolTableReader (..),
-  SymbolTableWriter (..),
+  catCallStackMessage,
   emptyIntMapTable,
-  emptyMapSymbolTableWriter,
-  getKnownSourceLocations,
-  getKnownStrings,
+  hydrateEventlogCallStackMessage,
   insertSourceLocationMessage,
   insertTextMessage,
   mkIntMapSymbolTableReader,
