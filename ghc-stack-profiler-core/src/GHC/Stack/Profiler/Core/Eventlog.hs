@@ -5,6 +5,7 @@ module GHC.Stack.Profiler.Core.Eventlog (
   BinaryStringMessage (..),
   BinarySourceLocationMessage (..),
   BinaryStackItem (..),
+  ThreadId (..),
   CapabilityId (..),
   StringId (..),
   incrementStringLocationId,
@@ -85,7 +86,7 @@ data BinaryEventlogMessage
   deriving (Eq, Ord, Show, Read, Generic)
 
 data BinaryCallStackMessage = MkBinaryCallStackMessage
-  { binaryCallThreadId :: !Word64
+  { binaryCallThreadId :: !ThreadId
   , binaryCallCapabilityId :: !CapabilityId
   , binaryCallStack :: ![BinaryStackItem]
   }
@@ -111,6 +112,13 @@ data BinaryStackItem
       {-# UNPACK #-} !StringId
       {-# UNPACK #-} !(Maybe SourceLocationId)
   deriving (Eq, Ord, Show, Read, Generic)
+
+-- | The ID of a thread.
+newtype ThreadId
+  = MkThreadId
+  { getThreadId :: Word64
+  }
+  deriving (Show, Eq, Ord, Read, Generic)
 
 -- | The ID of a capability.
 newtype CapabilityId
@@ -238,8 +246,8 @@ instance Binary BinaryEventlogMessage where
 
 instance Binary BinaryCallStackMessage where
   put msg = do
-    putWord32 $ word64ToWord32 $ getCapabilityId $ binaryCallCapabilityId msg
-    putWord32 $ fromIntegral $ binaryCallThreadId msg
+    putWord32 . word64ToWord32 $ getCapabilityId $ binaryCallCapabilityId msg
+    putWord32 . fromIntegral . getThreadId $ binaryCallThreadId msg
     -- TODO: This _should be_ a Word64.
     let
       items = binaryCallStack msg
@@ -253,7 +261,7 @@ instance Binary BinaryCallStackMessage where
     items <- replicateM (word16ToInt len) get
     pure
       MkBinaryCallStackMessage
-        { binaryCallThreadId = fromIntegral tid
+        { binaryCallThreadId = MkThreadId . fromIntegral $ tid
         , binaryCallCapabilityId = MkCapabilityId $ word32ToWord64 capId
         , binaryCallStack = items
         }

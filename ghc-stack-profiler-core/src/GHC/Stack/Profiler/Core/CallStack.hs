@@ -58,7 +58,7 @@ deserializeEventlogMessage msg = case runGetOrFail get msg of
 
 -- | A decoded rts callstack that can be serialised to the EventLog.
 data CallStackMessage = MkCallStackMessage
-  { callThreadId :: !Word64
+  { callThreadId :: !ThreadId
   , callCapabilityId :: !CapabilityId
   , callStack :: [StackItem]
   }
