@@ -9,7 +9,6 @@ import qualified Data.List.NonEmpty as NonEmpty
 import Data.Maybe
 import GHC.Stack.Profiler.Core.Eventlog
 import GHC.Stack.Profiler.Core.ThreadSample
-import GHC.Stack.Profiler.Core.Util (word32ToWord64)
 import Test.Tasty
 import Test.Tasty.QuickCheck
 
@@ -87,13 +86,13 @@ withEventlogSizeGen k =
 instance Arbitrary BinaryCallStackMessage where
   arbitrary =
     MkBinaryCallStackMessage
-      <$> (word32ToWord64 <$> arbitrary)
+      <$> (fromIntegral <$> arbitrary @Word32)
       <*> arbitrary
       <*> arbitrary
 
 instance Arbitrary CapabilityId where
   arbitrary =
-    MkCapabilityId <$> word32ToWord64 <$> arbitrary
+    MkCapabilityId <$> fromIntegral <$> arbitrary @Word32
 
 instance Arbitrary BinaryStackItem where
   arbitrary =
