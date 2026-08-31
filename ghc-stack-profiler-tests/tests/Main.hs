@@ -32,7 +32,7 @@ import GHC.Eventlog.Socket.Test (
   (&>),
  )
 import qualified GHC.RTS.Events as E
-import GHC.Stack.Profiler.Core.Eventlog (BinaryEventlogMessage)
+import GHC.Stack.Profiler.Core (BinaryEventlogMessage)
 import System.Environment (lookupEnv)
 import System.FilePath
 import System.IO.Temp (withTempDirectory)

@@ -112,10 +112,11 @@ data BinaryStackItem
       {-# UNPACK #-} !(Maybe SourceLocationId)
   deriving (Eq, Ord, Show, Read, Generic)
 
--- | Simple newtype for the ID of a capability.
+-- | The ID of a capability.
 newtype CapabilityId
   = MkCapabilityId
   { getCapabilityId :: Word64
+  -- TODO: This _should be_ an Int.
   }
   deriving (Show, Eq, Ord, Read, Generic)
 
@@ -238,7 +239,8 @@ instance Binary BinaryEventlogMessage where
 instance Binary BinaryCallStackMessage where
   put msg = do
     putWord32 $ word64ToWord32 $ getCapabilityId $ binaryCallCapabilityId msg
-    putWord32 $ word64ToWord32 $ binaryCallThreadId msg
+    putWord32 $ fromIntegral $ binaryCallThreadId msg
+    -- TODO: This _should be_ a Word64.
     let
       items = binaryCallStack msg
     putWord16 $ intToWord16 $ length items
@@ -246,12 +248,12 @@ instance Binary BinaryCallStackMessage where
 
   get = do
     capId <- getWord32
-    tid <- getWord32
+    tid <- getWord32 -- TODO: This _should be_ a Word64.
     len <- getWord16
     items <- replicateM (word16ToInt len) get
     pure
       MkBinaryCallStackMessage
-        { binaryCallThreadId = word32ToWord64 tid
+        { binaryCallThreadId = fromIntegral tid
         , binaryCallCapabilityId = MkCapabilityId $ word32ToWord64 capId
         , binaryCallStack = items
         }

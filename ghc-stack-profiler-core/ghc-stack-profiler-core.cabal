@@ -35,12 +35,13 @@ library
     warnings, exts
 
   exposed-modules:
+    GHC.Stack.Profiler.Core
+
+  other-modules:
     GHC.Stack.Profiler.Core.Eventlog
     GHC.Stack.Profiler.Core.SourceLocation
     GHC.Stack.Profiler.Core.SymbolTable
     GHC.Stack.Profiler.Core.ThreadSample
-
-  other-modules:
     GHC.Stack.Profiler.Core.Util
 
   build-depends:
