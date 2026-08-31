@@ -258,7 +258,7 @@ sampleThread tid = do
       pure $
         Just $
           ThreadSample
-            { threadSampleId = tid
+            { threadSampleId = GSPC.MkThreadId . fromThreadId $ tid
             , threadSampleCapability = GSPC.MkCapabilityId $ fromIntegral cap
             , threadSampleStackSnapshot = stack
             }

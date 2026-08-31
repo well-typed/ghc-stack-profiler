@@ -220,7 +220,7 @@ processCallStackMessage infoProvTable st0 GSPC.MkCallStackMessage{callThreadId, 
     (st1, stackFrameIds) = mapAccumR processStackFrame st0 stackFrames
     sample =
       Sample
-        { sampleThreadId = callThreadId
+        { sampleThreadId = GSPC.getThreadId callThreadId
         , sampleCapabilityId = callCapabilityId
         , -- TODO: Don't use an arbitrary cutoff, but reduce cycles within the stack.
           -- TODO: Perform cycle reduction or cutoff before the database lookups.

@@ -1,6 +1,7 @@
 module GHC.Stack.Profiler.Core (
   -- * Eventlog Protocol Messages
   CallStackMessage (..),
+  ThreadId (..),
   CapabilityId (..),
   StackItem (..),
   IpeId (..),
@@ -61,6 +62,7 @@ import GHC.Stack.Profiler.Core.Eventlog (
   IpeId (..),
   SourceLocationId (..),
   StringId (..),
+  ThreadId (..),
   callStackSizeLimit,
   callStackSizeLimit_,
   eventlogBufferSize,

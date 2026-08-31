@@ -10,14 +10,12 @@ module GHC.Stack.Profiler.Decode (
   binaryEventlogDefinitions,
 ) where
 
-import Control.Concurrent (ThreadId)
 import Control.Concurrent.STM
 import Control.Exception (assert)
 import Data.Binary
 import Data.Binary.Put
 import qualified Data.ByteString.Lazy as LBS
 import qualified Data.List.NonEmpty as NonEmpty
-import GHC.Conc.Sync (fromThreadId)
 import GHC.Generics (Generic)
 import GHC.Stack.CloneStack (StackSnapshot)
 import GHC.Stack.Profiler.Core
@@ -47,7 +45,7 @@ threadSampleToCallStackMessage sample = do
 
   pure
     MkCallStackMessage
-      { callThreadId = fromThreadId $ threadSampleId sample
+      { callThreadId = threadSampleId sample
       , callCapabilityId = threadSampleCapability sample
       , callStack = callStackItems
       }

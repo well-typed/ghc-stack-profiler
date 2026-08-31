@@ -84,10 +84,11 @@ withEventlogSizeGen k =
 
 instance Arbitrary BinaryCallStackMessage where
   arbitrary =
-    MkBinaryCallStackMessage
-      <$> (fromIntegral <$> arbitrary @Word32)
-      <*> arbitrary
-      <*> arbitrary
+    MkBinaryCallStackMessage <$> arbitrary <*> arbitrary <*> arbitrary
+
+instance Arbitrary ThreadId where
+  arbitrary =
+    MkThreadId . fromIntegral <$> arbitrary @Word32
 
 instance Arbitrary CapabilityId where
   arbitrary =
