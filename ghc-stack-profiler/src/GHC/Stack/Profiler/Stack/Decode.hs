@@ -18,6 +18,7 @@ import GHC.Stack.CloneStack (StackSnapshot (..))
 import GHC.Exts.Heap.InfoTable.Types
 
 import GHC.Stack.Profiler.Core.Eventlog
+import GHC.Stack.Profiler.Core.SourceLocation
 import GHC.Stack.Profiler.Core.ThreadSample
 import GHC.Stack.Profiler.Stack.Compat (lookupIpeIdForStackFrame)
 

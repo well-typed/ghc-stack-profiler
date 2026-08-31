@@ -8,11 +8,8 @@ module GHC.Stack.Profiler.Core.ThreadSample (
   -- * Serialisable 'ThreadSample'
   CallStackMessage (..),
   StackItem (..),
-  SourceLocation (..),
 
   -- * Serialisation of 'CallStackMessage'
-  SymbolTableWriter (..),
-  SymbolTableReader (..),
   dehydrateCallStackMessage,
   BinaryCallStackDecodeError (..),
   hydrateEventlogCallStackMessage,
