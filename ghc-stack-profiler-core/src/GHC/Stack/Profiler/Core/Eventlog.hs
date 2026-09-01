@@ -16,10 +16,10 @@ module GHC.Stack.Profiler.Core.Eventlog (
   joinCallStackChunks,
 
   -- * Eventlog constants
-  callStackFinalTag,
-  callStackChunkTag,
-  stringDefTag,
-  sourceLocationDefTag,
+  pattern CallStackFinalTag,
+  pattern CallStackChunkTag,
+  pattern StringDefTag,
+  pattern SourceLocationDefTag,
   messageTags,
   callStackSizeLimit,
   callStackSizeLimit_,
@@ -176,24 +176,24 @@ joinCallStackChunks msgs =
 -- Binary instances
 -- ----------------------------------------------------------------------------
 
-callStackFinalTag :: Word16
-callStackFinalTag = 0xFFCA
+pattern CallStackFinalTag :: Word16
+pattern CallStackFinalTag = 0xFFCA
 
-callStackChunkTag :: Word16
-callStackChunkTag = 0xFFCB
+pattern CallStackChunkTag :: Word16
+pattern CallStackChunkTag = 0xFFCB
 
-stringDefTag :: Word16
-stringDefTag = 0xFFCC
+pattern StringDefTag :: Word16
+pattern StringDefTag = 0xFFCC
 
-sourceLocationDefTag :: Word16
-sourceLocationDefTag = 0xFFCD
+pattern SourceLocationDefTag :: Word16
+pattern SourceLocationDefTag = 0xFFCD
 
 messageTags :: [Word16]
 messageTags =
-  [ callStackFinalTag
-  , callStackChunkTag
-  , stringDefTag
-  , sourceLocationDefTag
+  [ CallStackFinalTag
+  , CallStackChunkTag
+  , StringDefTag
+  , SourceLocationDefTag
   ]
 
 -- | Each message in the eventlog can be at most 2^16 bytes
@@ -235,35 +235,23 @@ byteSizeOf = \case
 
 instance Binary Message where
   put = \case
-    CallStackFinal msg ->
-      putWithTag callStackFinalTag msg
-    CallStackChunk msg ->
-      putWithTag callStackChunkTag msg
-    StringDef msg ->
-      putWithTag stringDefTag msg
-    SourceLocationDef msg ->
-      putWithTag sourceLocationDefTag msg
-   where
-    putWithTag t msg = putWord16 t >> put msg
+    CallStackFinal msg -> putWord16 CallStackFinalTag >> put msg
+    CallStackChunk msg -> putWord16 CallStackChunkTag >> put msg
+    StringDef msg -> putWord16 StringDefTag >> put msg
+    SourceLocationDef msg -> putWord16 SourceLocationDefTag >> put msg
 
-  get = do
-    tag <- getWord16
-    case tag of
-      _
-        | tag == callStackFinalTag ->
-            CallStackFinal <$> get
-        | tag == callStackChunkTag ->
-            CallStackChunk <$> get
-        | tag == stringDefTag ->
-            StringDef <$> get
-        | tag == sourceLocationDefTag ->
-            SourceLocationDef <$> get
-        | otherwise ->
-            fail $
-              "Message.get: Unknown tag expected one of "
-                ++ tags
-                ++ " but got "
-                ++ showAsHex tag
+  get =
+    getWord16 >>= \case
+      CallStackFinalTag -> CallStackFinal <$> get
+      CallStackChunkTag -> CallStackChunk <$> get
+      StringDefTag -> StringDef <$> get
+      SourceLocationDefTag -> SourceLocationDef <$> get
+      tag ->
+        fail $
+          "Message.get: Unknown tag expected one of "
+            ++ tags
+            ++ " but got "
+            ++ showAsHex tag
    where
     tags = List.intercalate ", " $ map showAsHex messageTags
 

@@ -28,6 +28,7 @@ common exts
     LambdaCase
     NamedFieldPuns
     NoImportQualifiedPost
+    PatternSynonyms
     ViewPatterns
 
 library
