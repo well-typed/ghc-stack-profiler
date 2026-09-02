@@ -250,7 +250,7 @@ hydrateBinaryEventlog st msg =
     --    [2,1]
     -- 3. When reading the eventlog, we store prepend later messages, resulting in:
     --    [2,1] [4,3] [6,5]
-    -- 4. 'joinCallStackChunks' reverses the individual callstack chunks to be the inverse of 'chunkCallStackMessage'
+    -- 4. 'joinCallStackChunks' reverses the individual callstack chunks to be the inverse of 'chunkCallStack'
     orderedChunks = NonEmpty.reverse $ msg :| chunks
     fullBinaryCallStackMessage = GSPC.joinCallStackChunks orderedChunks
     (callStackMessage, errs) =

@@ -9,11 +9,9 @@ import qualified Data.Map.Strict as Map
 import Data.Text (Text)
 import qualified Data.Text as Text
 import qualified Data.Tuple as Tuple
-import Data.Word (Word16)
 import GHC.Generics
 import GHC.Stack.Profiler.Core.CallStack
 import GHC.Stack.Profiler.Core.Eventlog
-import GHC.Stack.Profiler.Core.Util
 
 -- | Generic implementation to turn 'CallStack' into '[Message]'.
 --
@@ -30,12 +28,12 @@ import GHC.Stack.Profiler.Core.Util
 --    'CallStackFinal' messages. There might not be any such messages.
 -- * Then 'CallStackChunk' follow if there are any.
 -- * The last message is always a 'CallStackFinal' message and it occurs exactly once in @r@.
-dehydrateCallStackMessage ::
+dehydrateCallStack ::
   forall table.
   SymbolTableWriter table ->
   CallStack ->
   ([Message], SymbolTableWriter table)
-dehydrateCallStackMessage msgTbl0 msg =
+dehydrateCallStack msgTbl0 msg =
   let
     (stackItems, finalState) =
       runWithEncodingState
@@ -49,7 +47,7 @@ dehydrateCallStackMessage msgTbl0 msg =
       map SourceLocationDef $ sourceLocMessages finalState
 
     stackMsgChunks =
-      chunkCallStackMessage
+      chunkCallStack
         MkCallStackChunk
           { callStackChunkThreadId = callThreadId msg
           , callStackChunkCapabilityId = callCapabilityId msg
@@ -70,7 +68,7 @@ dehydrateCallStackMessage msgTbl0 msg =
         Just srcLoc -> Just <$> lookupSourceLocationMessage srcLoc
       CallStackFrameAnn <$> lookupTextMessage (Text.pack s) <*> pure srcLocId
 
--- | Chunk the 'callStackChunk' of the 'CallStackChunk' by the given 'Word16'.
+-- | Chunk the 'callStackChunk' of the 'CallStackChunk' by the given 'Int'.
 -- If there are no items in 'CallStackChunk', then a singleton list is returned containing
 -- the original element.
 --
@@ -83,22 +81,21 @@ dehydrateCallStackMessage msgTbl0 msg =
 --
 -- This means, for a stack @[1,2,3,4,5,6]@ and an assumed chunk size of 2,
 -- we produce @[[6,5],[4,3],[2,1]]@.
-chunkCallStackMessage :: CallStackChunk -> [Message]
-chunkCallStackMessage = chunkCallStackMessage_ callStackSizeLimit
+chunkCallStack :: CallStackChunk -> [Message]
+chunkCallStack = chunkCallStack_ callStackMaxLen
 
--- | Same as 'chunkCallStackMessage', but allows to set the chunking size in bytes.
-chunkCallStackMessage_ :: Word16 -> CallStackChunk -> [Message]
-chunkCallStackMessage_ chunkLimit16 msg0 =
+-- | Same as 'chunkCallStack', but allows to set the chunking size in bytes.
+chunkCallStack_ :: Int -> CallStackChunk -> [Message]
+chunkCallStack_ chunkLimit msg0 =
   let
-    chunkLimitInt = word16ToInt chunkLimit16
     items = callStackChunk msg0
     chunked =
       let
         go (!size, curChunk, restChunk) item =
           let
-            !bytes = word16ToInt $ byteSizeOf item
+            !bytes = callStackFrameSize item
           in
-            if (size + bytes) < chunkLimitInt
+            if (size + bytes) < chunkLimit
               then (size + bytes, item : curChunk, restChunk)
               else (bytes, [item], curChunk : restChunk)
         (_, lastChunk, initChunk) = List.foldl' go (0, [], []) items

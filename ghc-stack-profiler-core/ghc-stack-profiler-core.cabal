@@ -37,6 +37,7 @@ library
 
   exposed-modules:
     GHC.Stack.Profiler.Core
+    GHC.Stack.Profiler.Core.Internal
 
   other-modules:
     GHC.Stack.Profiler.Core.CallStack
@@ -69,7 +70,9 @@ test-suite ghc-stack-profiler-core-tests
     bytestring,
     ghc-stack-profiler-core,
     tasty >=1.5.4 && <1.6,
+    tasty-hunit,
     tasty-quickcheck >=0.10 && <0.12,
+    text >=2 && <2.2,
 
   default-language: GHC2021
 

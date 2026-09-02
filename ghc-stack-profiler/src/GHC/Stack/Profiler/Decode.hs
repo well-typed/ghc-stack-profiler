@@ -54,7 +54,7 @@ serializeCallStackMessage :: StackSymbolTable -> CallStack -> STM [Message]
 serializeCallStackMessage tableRef callStackMessage = do
   table <- readSymbolTable tableRef
   let
-    (eventlogMessages, newTable) = dehydrateCallStackMessage table callStackMessage
+    (eventlogMessages, newTable) = dehydrateCallStack table callStackMessage
   writeSymbolTable newTable tableRef
   pure eventlogMessages
 
