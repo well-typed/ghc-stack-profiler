@@ -1,5 +1,7 @@
+{-# LANGUAGE MultiWayIf #-}
+
 module GHC.Stack.Profiler.Core.Eventlog (
-  -- * Eventlgog Message types
+  -- * Eventlog Message types
   Message (..),
   CallStackChunk (..),
   StringDef (..),
@@ -15,30 +17,46 @@ module GHC.Stack.Profiler.Core.Eventlog (
   deserializeEventlogMessage,
   joinCallStackChunks,
 
-  -- * Eventlog constants
-  pattern CallStackFinalTag,
-  pattern CallStackChunkTag,
-  pattern StringDefTag,
-  pattern SourceLocationDefTag,
-  messageTags,
-  callStackSizeLimit,
-  callStackSizeLimit_,
-  byteSizeOf,
-  eventlogBufferSize,
-  stringLengthLimit,
+  -- * Low-level API
+  MessageTag (..),
+  messageTagSize,
+  CallStackFrameTag (..),
+  ipeIdSize,
+  stringIdSize,
+  sourceLocationIdSize,
+  messageMaxSize,
+  messageMinSize,
+  stringDefBodyMaxSize,
+  sourceLocationDefSize,
+  ShortText (..),
+  toShortText,
+  truncateTextToByteLimit,
+  callStackFrameTagSize,
+  callStackMaxLen,
+  callStackMaxLen',
+  callStackFrameSize,
+  callStackFrameMaxSize,
+  capabilityIdSize,
+  threadIdSize,
 ) where
 
+import Control.Exception (assert)
 import Control.Monad (replicateM)
 import Data.Binary
-import Data.Binary.Get (runGetOrFail)
+import Data.Binary.Get (getByteString, runGetOrFail)
+import Data.Binary.Put (putByteString)
 import qualified Data.ByteString.Lazy as LBS
 import Data.Coerce (coerce)
 import qualified Data.List as List
 import Data.List.NonEmpty (NonEmpty)
 import qualified Data.List.NonEmpty as NonEmpty
 import Data.Text (Text)
+import qualified Data.Text as T
+import qualified Data.Text.Encoding as TE
+import qualified Data.Text.Foreign as TF
 import GHC.Generics
 import GHC.Stack.Profiler.Core.Util
+import Text.Printf (printf)
 
 -- ----------------------------------------------------------------------------
 -- Eventlog Messages
@@ -163,7 +181,7 @@ deserializeEventlogMessage msg = case runGetOrFail get msg of
 -- | Combine all 'CallStackChunk's into a single 'CallStackChunk'.
 -- We assume that all 'CallStackChunk' only differ in their 'callStackChunk' values.
 --
--- 'joinCallStackChunks' is the conceptually inverse of 'chunkCallStackMessage'.
+-- 'joinCallStackChunks' is the conceptually inverse of 'chunkCallStack'.
 joinCallStackChunks :: NonEmpty CallStackChunk -> CallStackChunk
 joinCallStackChunks msgs =
   MkCallStackChunk
@@ -172,163 +190,373 @@ joinCallStackChunks msgs =
     , callStackChunk = concatMap (reverse . callStackChunk) . reverse $ NonEmpty.toList msgs
     }
 
--- ----------------------------------------------------------------------------
+-------------------------------------------------------------------------------
 -- Binary instances
--- ----------------------------------------------------------------------------
+-------------------------------------------------------------------------------
 
-pattern CallStackFinalTag :: Word16
-pattern CallStackFinalTag = 0xFFCA
+-------------------------------------------------------------------------------
+-- Message Tags
 
-pattern CallStackChunkTag :: Word16
-pattern CallStackChunkTag = 0xFFCB
+data MessageTag
+  = CallStackFinalTag
+  | CallStackChunkTag
+  | StringDefTag
+  | SourceLocationDefTag
+  deriving (Bounded, Enum, Eq, Show)
 
-pattern StringDefTag :: Word16
-pattern StringDefTag = 0xFFCC
+messageTagSize :: Int
+messageTagSize = 2
 
-pattern SourceLocationDefTag :: Word16
-pattern SourceLocationDefTag = 0xFFCD
+messageTagToWord16 :: MessageTag -> Word16
+messageTagToWord16 = \case
+  CallStackFinalTag -> 0xFFCA
+  CallStackChunkTag -> 0xFFCB
+  StringDefTag -> 0xFFCC
+  SourceLocationDefTag -> 0xFFCD
 
-messageTags :: [Word16]
-messageTags =
-  [ CallStackFinalTag
-  , CallStackChunkTag
-  , StringDefTag
-  , SourceLocationDefTag
-  ]
+instance Binary MessageTag where
+  put :: MessageTag -> Put
+  put = putWord16 . messageTagToWord16
 
--- | Each message in the eventlog can be at most 2^16 bytes
-eventlogBufferSize :: Word64
-eventlogBufferSize = (2 :: Word64) ^ (16 :: Word64)
-
--- | Size limit of strings that can occur in the eventlog.
-stringLengthLimit :: Word16
-stringLengthLimit =
-  word64ToWord16 $
-    eventlogBufferSize
-      - 2 {- 0xFFCC -}
-      - 8 {- Word64 of 'StringId' -}
-      - 2 {- Word16 for the length of the string to serialise -}
-
--- | The limit of stack items that can go in one eventlog message in bytes.
-callStackSizeLimit :: Word16
-callStackSizeLimit =
-  callStackSizeLimit_ eventlogBufferSize
-
--- | The limit of stack items that can go in one eventlog message in bytes
--- with configurable the eventlog message size.
-callStackSizeLimit_ :: Word64 -> Word16
-callStackSizeLimit_ eventlogSize =
-  word64ToWord16
-    ( eventlogSize
-        - 2 {- 0xFFCA or 0xFFCB -}
-        - 4 {- Word32 of 'CapabilityId' -}
-        - 4 {- Word32 of 'ThreadId' -}
-        - 2 {- Word16 for the length of stack entry -}
-    )
-
--- | Size in bytes of the given 'CallStackFrame'
-byteSizeOf :: CallStackFrame -> Word16
-byteSizeOf = \case
-  CallStackFrameIpe{} -> 1 + 8 {- 0x1 + Word64 of 'IpeId' -}
-  CallStackFrameAnn _ Nothing -> 1 + 8 {- 0x2 + Word64 of 'StringId' -}
-  CallStackFrameAnn _ (Just _) -> 1 + 8 + 8 {- 0x3 + Word64 of 'StringId' + Word64 of 'SourceLocationId' -}
-
-instance Binary Message where
-  put = \case
-    CallStackFinal msg -> putWord16 CallStackFinalTag >> put msg
-    CallStackChunk msg -> putWord16 CallStackChunkTag >> put msg
-    StringDef msg -> putWord16 StringDefTag >> put msg
-    SourceLocationDef msg -> putWord16 SourceLocationDefTag >> put msg
-
+  get :: Get MessageTag
   get =
     getWord16 >>= \case
-      CallStackFinalTag -> CallStackFinal <$> get
-      CallStackChunkTag -> CallStackChunk <$> get
-      StringDefTag -> StringDef <$> get
-      SourceLocationDefTag -> SourceLocationDef <$> get
-      tag ->
+      0xFFCA -> pure CallStackFinalTag
+      0xFFCB -> pure CallStackChunkTag
+      0xFFCC -> pure StringDefTag
+      0xFFCD -> pure SourceLocationDefTag
+      badTag ->
         fail $
-          "Message.get: Unknown tag expected one of "
-            ++ tags
-            ++ " but got "
-            ++ showAsHex tag
+          printf
+            "Found invalid message tag %s. Expected one of %s."
+            (showAsHex badTag)
+            (List.intercalate ", " messageTags)
    where
-    tags = List.intercalate ", " $ map showAsHex messageTags
+    messageTags :: [String]
+    messageTags = [showAsHex (messageTagToWord16 tag) | tag <- [minBound .. maxBound]]
+
+-------------------------------------------------------------------------------
+-- Messages
+
+instance Binary Message where
+  put :: Message -> Put
+  put = \case
+    CallStackFinal callStackChunk -> do
+      put CallStackFinalTag
+      put callStackChunk
+    CallStackChunk callStackChunk -> do
+      put CallStackChunkTag
+      put callStackChunk
+    StringDef stringDef -> do
+      put StringDefTag
+      put stringDef
+    SourceLocationDef sourceLocationDef -> do
+      put SourceLocationDefTag
+      put sourceLocationDef
+
+  get :: Get Message
+  get =
+    get >>= \case
+      CallStackFinalTag ->
+        CallStackFinal <$> get
+      CallStackChunkTag ->
+        CallStackChunk <$> get
+      StringDefTag ->
+        StringDef <$> get
+      SourceLocationDefTag ->
+        SourceLocationDef <$> get
+
+messageMaxSize :: Int
+messageMaxSize =
+  fromIntegral (maxBound @Word16)
+
+messageMinSize :: Int
+messageMinSize =
+  messageTagSize
+    + minimum
+      [ {- CallStackChunk/CallStackFinal -}
+        capabilityIdSize + threadIdSize + callStackLenSize
+      , {- StringDef -}
+        stringIdSize + stringDefBodyLenSize
+      , {- SourceLocationDef -}
+        sourceLocationDefSize
+      ]
+
+-------------------------------------------------------------------------------
+-- ThreadId
+
+instance Binary ThreadId where
+  put :: ThreadId -> Put
+  put (MkThreadId threadId) =
+    -- TODO: This _should be_ a Word64.
+    putWord32 (fromIntegral threadId)
+
+  get :: Get ThreadId
+  get = MkThreadId . fromIntegral <$> getWord32
+
+threadIdSize :: Int
+threadIdSize = 4
+
+-------------------------------------------------------------------------------
+-- CapabilityId
+
+instance Binary CapabilityId where
+  put :: CapabilityId -> Put
+  put (MkCapabilityId capabilityId) =
+    -- TODO: This _should be_ an Int or Word16.
+    putWord32 (fromIntegral capabilityId)
+
+  get :: Get CapabilityId
+  get = MkCapabilityId . fromIntegral <$> getWord32
+
+capabilityIdSize :: Int
+capabilityIdSize = 4
+
+-------------------------------------------------------------------------------
+-- CallStackChunks
 
 instance Binary CallStackChunk where
-  put msg = do
-    putWord32 . fromIntegral . getCapabilityId $ callStackChunkCapabilityId msg
-    putWord32 . fromIntegral . getThreadId $ callStackChunkThreadId msg
-    -- TODO: This _should be_ a Word64.
+  put :: CallStackChunk -> Put
+  put MkCallStackChunk{callStackChunkCapabilityId, callStackChunkThreadId, callStackChunk} = do
+    put callStackChunkCapabilityId
+    put callStackChunkThreadId
     let
-      items = callStackChunk msg
-    putWord16 $ intToWord16 $ length items
-    mapM_ put items
+      callStackChunkLength = length callStackChunk
+    putWord16 $ fromIntegral callStackChunkLength
+    mapM_ put callStackChunk
 
+  get :: Get CallStackChunk
   get = do
-    capId <- getWord32
-    tid <- getWord32 -- TODO: This _should be_ a Word64.
-    len <- getWord16
-    items <- replicateM (word16ToInt len) get
-    pure
-      MkCallStackChunk
-        { callStackChunkThreadId = MkThreadId . fromIntegral $ tid
-        , callStackChunkCapabilityId = MkCapabilityId . fromIntegral $ capId
-        , callStackChunk = items
-        }
+    callStackChunkCapabilityId <- get
+    callStackChunkThreadId <- get
+    callStackChunkLength <- fromIntegral <$> getWord16
+    callStackChunk <- replicateM callStackChunkLength get
+    pure MkCallStackChunk{callStackChunkThreadId, callStackChunkCapabilityId, callStackChunk}
+
+-------------------------------------------------------------------------------
+-- CallStackFrameTags
+
+data CallStackFrameTag
+  = CallStackFrameIpeTag
+  | CallStackFrameAnnWithNothingTag
+  | CallStackFrameAnnWithJustSourceLocationTag
+  deriving (Bounded, Enum, Eq, Show)
+
+callStackFrameTagSize :: Int
+callStackFrameTagSize = 1
+
+callStackFrameTagToWord8 :: CallStackFrameTag -> Word8
+callStackFrameTagToWord8 = \case
+  CallStackFrameIpeTag -> 0x1
+  CallStackFrameAnnWithNothingTag -> 0x2
+  CallStackFrameAnnWithJustSourceLocationTag -> 0x3
+
+instance Binary CallStackFrameTag where
+  put :: CallStackFrameTag -> Put
+  put = putWord8 . callStackFrameTagToWord8
+
+  get :: Get CallStackFrameTag
+  get =
+    getWord8 >>= \case
+      0x1 -> pure CallStackFrameIpeTag
+      0x2 -> pure CallStackFrameAnnWithNothingTag
+      0x3 -> pure CallStackFrameAnnWithJustSourceLocationTag
+      badTag ->
+        fail $
+          printf
+            "Found invalid call-stack frame tag %s. Expected one of %s."
+            (showAsHex badTag)
+            (List.intercalate ", " callStackFrameTags)
+   where
+    callStackFrameTags :: [String]
+    callStackFrameTags = [showAsHex (callStackFrameTagToWord8 tag) | tag <- [minBound .. maxBound]]
+
+-------------------------------------------------------------------------------
+-- CallStackFrames
+
+instance Binary IpeId where
+  put :: IpeId -> Put
+  put = putWord64 . coerce
+
+  get :: Get IpeId
+  get = coerce getWord64
+
+ipeIdSize :: Int
+ipeIdSize = 8
 
 instance Binary CallStackFrame where
+  put :: CallStackFrame -> Put
   put = \case
     CallStackFrameIpe ipeId -> do
-      putWord8 0x1
+      put CallStackFrameIpeTag
       put ipeId
-    CallStackFrameAnn sid Nothing -> do
-      putWord8 0x2
-      put sid
-    CallStackFrameAnn sid (Just lid) -> do
-      putWord8 0x3
-      put sid
-      put lid
+    CallStackFrameAnn stringId Nothing -> do
+      put CallStackFrameAnnWithNothingTag
+      put stringId
+    CallStackFrameAnn stringId (Just sourceLocationId) -> do
+      put CallStackFrameAnnWithJustSourceLocationTag
+      put stringId
+      put sourceLocationId
 
+  get :: Get CallStackFrame
   get = do
-    getWord8 >>= \case
-      0x1 -> CallStackFrameIpe <$> get
-      0x2 -> CallStackFrameAnn <$> get <*> pure Nothing
-      0x3 -> CallStackFrameAnn <$> get <*> (Just <$> get)
-      n -> fail $ "StackItem: Unexpected tag byte encounter: " <> show n
+    get >>= \case
+      CallStackFrameIpeTag ->
+        CallStackFrameIpe <$> get
+      CallStackFrameAnnWithNothingTag ->
+        CallStackFrameAnn <$> get <*> pure Nothing
+      CallStackFrameAnnWithJustSourceLocationTag ->
+        CallStackFrameAnn <$> get <*> (Just <$> get)
+
+-------------------------------------------------------------------------------
+-- StringDefs
+
+instance Binary StringId where
+  put :: StringId -> Put
+  put = putWord64 . coerce
+
+  get :: Get StringId
+  get = coerce getWord64
+
+stringIdSize :: Int
+stringIdSize = 8
+
+instance Binary StringDef where
+  put :: StringDef -> Put
+  put MkStringDef{stringDefId, stringDefBody} = do
+    put stringDefId
+    put $ MkUnsafeShortText (truncateTextToByteLimit stringDefBodyMaxSize stringDefBody)
+
+  get :: Get StringDef
+  get = do
+    stringDefId <- get
+    -- NOTE: This allows reading stringDefBody with a lengthWord8 of up to
+    --       the maxBound of Word16, which is bigger than stringDefBodyMaxSize.
+    --       This causes a slight mismatch between the size of stringDefBody
+    --       read by get and written by put, which means that get followed by
+    --       put is not the identity. However, this would only truncate the
+    --       stringDefBody if that binary representation was created manually,
+    --     rather than via put, so this is likely not an issue.
+    MkUnsafeShortText stringDefBody <- get
+    pure MkStringDef{stringDefId, stringDefBody}
+
+stringDefBodyLenSize :: Int
+stringDefBodyLenSize = 2
+
+stringDefBodyMaxSize :: Int
+stringDefBodyMaxSize =
+  messageMaxSize
+    - messageTagSize
+    - stringIdSize
+    - stringDefBodyLenSize
+
+-------------------------------------------------------------------------------
+-- SourceLocationDefs
+
+instance Binary SourceLocationId where
+  put :: SourceLocationId -> Put
+  put = putWord64 . coerce
+
+  get :: Get SourceLocationId
+  get = coerce getWord64
+
+sourceLocationIdSize :: Int
+sourceLocationIdSize = 8
 
 instance Binary SourceLocationDef where
+  put :: SourceLocationDef -> Put
   put msg = do
     put $ sourceLocationDefId msg
     putWord32 (sourceLocationDefRow msg)
     putWord32 (sourceLocationDefColumn msg)
     put (sourceLocationDefFilename msg)
 
+  get :: Get SourceLocationDef
+  get = MkSourceLocationDef <$> get <*> getWord32 <*> getWord32 <*> get
+
+sourceLocationDefSize :: Int
+sourceLocationDefSize =
+  sourceLocationIdSize {- sourceLocationDefId -}
+    + 4 {- sourceLocationDefRow -}
+    + 4 {- sourceLocationDefColumn -}
+    + stringIdSize {- sourceLocationDefFilename -}
+
+-------------------------------------------------------------------------------
+-- Trim Text to a byte-size limit
+
+-- | A 'Text' whose 'TF.lengthWord8' is at most @'maxBound' :: 'Word16'@ bytes.
+newtype ShortText = MkUnsafeShortText Text
+  deriving (Eq, Show)
+
+toShortText :: Text -> ShortText
+toShortText text =
+  MkUnsafeShortText (truncateTextToByteLimit maxBoundWord16 text)
+ where
+  maxBoundWord16 = fromIntegral (maxBound @Word16)
+
+instance Binary ShortText where
+  put :: ShortText -> Put
+  put (MkUnsafeShortText text) = do
+    putWord16 (fromIntegral (TF.lengthWord8 text))
+    putByteString (TE.encodeUtf8 text)
+
+  get :: Get ShortText
   get = do
-    MkSourceLocationDef
-      <$> get
-      <*> getWord32
-      <*> getWord32
-      <*> get
+    lengthWord8 <- fromIntegral <$> getWord16
+    bytes <- getByteString lengthWord8
+    pure $ MkUnsafeShortText (TE.decodeUtf8Lenient bytes)
 
-instance Binary StringDef where
-  put msg = do
-    put $ stringDefId msg
-    putTextWord16 stringLengthLimit (stringDefBody msg)
+-- | @'truncateTextToByteLimit' byteLimit text@ truncates @text@ such that its
+--   UTF-8 serialisation fits within @byteLimit@ bytes.
+truncateTextToByteLimit :: Int -> Text -> Text
+truncateTextToByteLimit byteLimit text
+  | TF.lengthWord8 text <= byteLimit = text
+  | TF.lengthWord8 text' <= byteLimit = text'
+  | otherwise =
+      -- @'takeWord8' n@ takes the first n bytes and _expands_ to complete the
+      -- last code point, which means it may return up to n+3 bytes. Hence, if
+      -- this happens, we drop the final code point.
+      assert (byteLimit < TF.lengthWord8 text' && TF.lengthWord8 text' <= byteLimit + 3) $
+        T.dropEnd 1 text'
+ where
+  text' = TF.takeWord8 (fromIntegral byteLimit) text
 
-  get = do
-    MkStringDef
-      <$> get
-      <*> getTextWord16
+-------------------------------------------------------------------------------
+-- Size Invariants
 
-instance Binary SourceLocationId where
-  put = putWord64 . coerce
-  get = coerce getWord64
+callStackLenSize :: Int
+callStackLenSize = 2
 
-instance Binary StringId where
-  put = putWord64 . coerce
-  get = coerce getWord64
+-- | The maximum number of `CallStackFrame`s in a single `Message`.
+callStackMaxLen :: Int
+callStackMaxLen = callStackMaxLen' messageMaxSize
 
-instance Binary IpeId where
-  put = putWord64 . coerce
-  get = coerce getWord64
+-- | The maximum number of `CallStackFrame`s in a single `Message`,
+--   with a variable `messageMaxSize`. Used for testing.
+callStackMaxLen' :: Int -> Int
+callStackMaxLen' messageMaxSize' =
+  fromIntegral
+    ( messageMaxSize'
+        - messageTagSize
+        - capabilityIdSize
+        - threadIdSize
+        - callStackLenSize
+    )
+
+-- | Size in bytes of the given 'CallStackFrame'
+callStackFrameSize :: CallStackFrame -> Int
+callStackFrameSize = \case
+  CallStackFrameIpe{} ->
+    1 {- CallStackFrameTag -}
+      + 8 {- IpeId -}
+  CallStackFrameAnn _ Nothing ->
+    1 {- CallStackFrameTag -}
+      + 8 {- StringId -}
+  CallStackFrameAnn _ (Just _) ->
+    1 {- CallStackFrameTag -}
+      + 8 {- StringId -}
+      + 8 {- SourceLocationId -}
+
+callStackFrameMaxSize :: Int
+callStackFrameMaxSize =
+  17 {- see case for CallStackFrameAnn in callStackFrameSize -}

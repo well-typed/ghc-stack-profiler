@@ -38,13 +38,9 @@ module GHC.Stack.Profiler.Core (
   -- * Encode
 
   -- ** Serialise
-  callStackSizeLimit,
-  callStackSizeLimit_,
-  eventlogBufferSize,
-  chunkCallStackMessage_,
 
   -- ** Dehydrate
-  dehydrateCallStackMessage,
+  dehydrateCallStack,
 
   -- *** Symbol Table
   SymbolTableWriter (..),
@@ -62,8 +58,7 @@ import GHC.Stack.Profiler.Core.CallStack (
 import GHC.Stack.Profiler.Core.Dehydrate (
   MapTable,
   SymbolTableWriter (..),
-  chunkCallStackMessage_,
-  dehydrateCallStackMessage,
+  dehydrateCallStack,
   emptyMapSymbolTableWriter,
   getKnownSourceLocations,
   getKnownStrings,
@@ -79,11 +74,8 @@ import GHC.Stack.Profiler.Core.Eventlog (
   StringDef (..),
   StringId (..),
   ThreadId (..),
-  callStackSizeLimit,
-  callStackSizeLimit_,
-  joinCallStackChunks,
   deserializeEventlogMessage,
-  eventlogBufferSize,
+  joinCallStackChunks,
  )
 import GHC.Stack.Profiler.Core.Hydrate (
   BinaryCallStackDecodeError (..),
