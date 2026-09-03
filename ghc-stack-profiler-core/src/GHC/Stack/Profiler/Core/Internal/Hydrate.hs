@@ -1,4 +1,4 @@
-module GHC.Stack.Profiler.Core.Hydrate where
+module GHC.Stack.Profiler.Core.Internal.Hydrate where
 
 import Control.Exception
 import Data.Either (partitionEithers)
@@ -7,9 +7,9 @@ import qualified Data.IntMap.Strict as IntMap
 import Data.Text (Text)
 import qualified Data.Text as Text
 import GHC.Generics
-import GHC.Stack.Profiler.Core.CallStack
-import GHC.Stack.Profiler.Core.Eventlog
-import GHC.Stack.Profiler.Core.Util
+import GHC.Stack.Profiler.Core.Internal.CallStack
+import GHC.Stack.Profiler.Core.Internal.Eventlog
+import GHC.Stack.Profiler.Core.Internal.Util
 
 data BinaryCallStackDecodeError
   = StringIdNotFound StringId

@@ -1,4 +1,4 @@
-module GHC.Stack.Profiler.Core.Util (
+module GHC.Stack.Profiler.Core.Internal.Util (
   idToInt,
   showAsHex,
   putWord64,

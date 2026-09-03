@@ -50,12 +50,12 @@ module GHC.Stack.Profiler.Core (
   getKnownSourceLocations,
 ) where
 
-import GHC.Stack.Profiler.Core.CallStack (
+import GHC.Stack.Profiler.Core.Internal.CallStack (
   CallStack (..),
   SourceLocation (..),
   StackItem (..),
  )
-import GHC.Stack.Profiler.Core.Dehydrate (
+import GHC.Stack.Profiler.Core.Internal.Dehydrate (
   MapTable,
   SymbolTableWriter (..),
   dehydrateCallStack,
@@ -63,7 +63,7 @@ import GHC.Stack.Profiler.Core.Dehydrate (
   getKnownSourceLocations,
   getKnownStrings,
  )
-import GHC.Stack.Profiler.Core.Eventlog (
+import GHC.Stack.Profiler.Core.Internal.Eventlog (
   CallStackChunk (..),
   CallStackFrame (..),
   CapabilityId (..),
@@ -77,7 +77,7 @@ import GHC.Stack.Profiler.Core.Eventlog (
   deserializeEventlogMessage,
   joinCallStackChunks,
  )
-import GHC.Stack.Profiler.Core.Hydrate (
+import GHC.Stack.Profiler.Core.Internal.Hydrate (
   BinaryCallStackDecodeError (..),
   IntMapTable,
   MissingKeyError (..),

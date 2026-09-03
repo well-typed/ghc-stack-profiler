@@ -1,6 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module GHC.Stack.Profiler.Core.CallStack (
+module GHC.Stack.Profiler.Core.Internal.CallStack (
   -- * Serialisable 'ThreadSample'
   CallStack (..),
   StackItem (..),
@@ -10,7 +10,7 @@ module GHC.Stack.Profiler.Core.CallStack (
 import Data.Text (Text)
 import Data.Word (Word32)
 import GHC.Generics
-import GHC.Stack.Profiler.Core.Eventlog
+import GHC.Stack.Profiler.Core.Internal.Eventlog
 
 -- ----------------------------------------------------------------------------
 -- Decoded RTS CallStack

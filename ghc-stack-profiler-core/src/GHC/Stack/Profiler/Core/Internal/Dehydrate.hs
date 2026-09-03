@@ -1,4 +1,4 @@
-module GHC.Stack.Profiler.Core.Dehydrate where
+module GHC.Stack.Profiler.Core.Internal.Dehydrate where
 
 import Control.Monad (when)
 import Control.Monad.Trans.State.Strict (State, runState)
@@ -10,8 +10,8 @@ import Data.Text (Text)
 import qualified Data.Text as Text
 import qualified Data.Tuple as Tuple
 import GHC.Generics
-import GHC.Stack.Profiler.Core.CallStack
-import GHC.Stack.Profiler.Core.Eventlog
+import GHC.Stack.Profiler.Core.Internal.CallStack
+import GHC.Stack.Profiler.Core.Internal.Eventlog
 
 -- | Generic implementation to turn 'CallStack' into '[Message]'.
 --
