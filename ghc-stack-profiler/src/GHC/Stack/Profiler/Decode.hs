@@ -1,13 +1,13 @@
 module GHC.Stack.Profiler.Decode (
-  ThreadSample (..),
+  CallStackSample (..),
   StackSymbolTable,
   SymbolTableWriter,
   initMessages,
-  serializeCallStackMessage,
-  serializeBinaryEventlogMessage,
-  serializeBinaryEventlogMessages,
-  threadSampleToCallStackMessage,
-  binaryEventlogDefinitions,
+  serializeCallStack,
+  serializeMessage,
+  serializeMessages,
+  decodeToCallStack,
+  definitions,
 ) where
 
 import Control.Concurrent.STM
@@ -22,61 +22,61 @@ import GHC.Stack.Profiler.Core
 import GHC.Stack.Profiler.Stack.Decode (decodeStackWithIpProvId)
 import GHC.Stack.Profiler.SymbolTable
 
--- | A 'ThreadSample' is a snapshot of a threads RTS callstack.
+-- | A 'CallStackSample' is a snapshot of a threads RTS callstack.
 -- This callstack is a copy of the original callstack, so can be traversed and
 -- decoded without affecting the running thread.
 --
 -- The 'StackSnapshot' is a boxed value and needs to be garbage collected.
 -- Note, as long as 'StackSnapshot' is alive, you keep the full callstack
 -- alive, which might be quite expensive.
-data ThreadSample = ThreadSample
-  { threadSampleId :: !ThreadId
-  , threadSampleCapability :: !CapabilityId
-  , threadSampleStackSnapshot :: !StackSnapshot
+data CallStackSample = CallStackSample
+  { callStackSampleThreadId :: !ThreadId
+  , callStackSampleCapabilityId :: !CapabilityId
+  , callStackSampleStackSnapshot :: !StackSnapshot
   }
   deriving (Generic)
 
-threadSampleToCallStackMessage :: ThreadSample -> IO CallStack
-threadSampleToCallStackMessage sample = do
-  frames <- decodeStackWithIpProvId $ threadSampleStackSnapshot sample
+decodeToCallStack :: CallStackSample -> IO CallStack
+decodeToCallStack sample = do
+  frames <- decodeStackWithIpProvId $ callStackSampleStackSnapshot sample
   let
     -- removes immediate duplicates
     callStackItems = fmap NonEmpty.head $ NonEmpty.group frames
 
   pure
     MkCallStack
-      { callThreadId = threadSampleId sample
-      , callCapabilityId = threadSampleCapability sample
+      { callThreadId = callStackSampleThreadId sample
+      , callCapabilityId = callStackSampleCapabilityId sample
       , callStack = callStackItems
       }
 
-serializeCallStackMessage :: StackSymbolTable -> CallStack -> STM [Message]
-serializeCallStackMessage tableRef callStackMessage = do
+serializeCallStack :: StackSymbolTable -> CallStack -> STM [Message]
+serializeCallStack tableRef callStackMessage = do
   table <- readSymbolTable tableRef
   let
     (eventlogMessages, newTable) = dehydrateCallStack table callStackMessage
   writeSymbolTable newTable tableRef
   pure eventlogMessages
 
-serializeBinaryEventlogMessage :: Message -> LBS.ByteString
-serializeBinaryEventlogMessage = runPut . put
+serializeMessage :: Message -> LBS.ByteString
+serializeMessage = runPut . put
 
-serializeBinaryEventlogMessages :: [Message] -> [LBS.ByteString]
-serializeBinaryEventlogMessages = map serializeBinaryEventlogMessage
+serializeMessages :: [Message] -> [LBS.ByteString]
+serializeMessages = map serializeMessage
 
 initMessages :: SymbolTableWriter MapTable -> [LBS.ByteString]
 initMessages symbolTable =
   let
-    (stringDefs, srcLocDefs) = binaryEventlogDefinitions symbolTable
+    (stringDefs, srcLocDefs) = definitions symbolTable
     binaryEventlogMessages =
       ( map StringDef stringDefs
           ++ map SourceLocationDef srcLocDefs
       )
   in
-    serializeBinaryEventlogMessages binaryEventlogMessages
+    serializeMessages binaryEventlogMessages
 
-binaryEventlogDefinitions :: SymbolTableWriter MapTable -> ([StringDef], [SourceLocationDef])
-binaryEventlogDefinitions table =
+definitions :: SymbolTableWriter MapTable -> ([StringDef], [SourceLocationDef])
+definitions table =
   let
     knownStrings = getKnownStrings $ writerTable table
     knownSrcLocs = getKnownSourceLocations $ writerTable table
