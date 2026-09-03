@@ -96,6 +96,9 @@ library
     warnings, exts
 
   exposed-modules:
+    GHC.Stack.Profiler
+
+  other-modules:
     Debug.Trace.Binary.Compat
     GHC.Internal.ClosureTypes.Compat
     GHC.Internal.Heap.Closures.Compat
@@ -103,7 +106,6 @@ library
     GHC.Internal.Stack.Constants.Compat
     GHC.Internal.Stack.Decode.Compat
     GHC.Stack.Annotation.Experimental.Compat
-    GHC.Stack.Profiler
     GHC.Stack.Profiler.Commands
     GHC.Stack.Profiler.Decode
     GHC.Stack.Profiler.Eventlog.Socket
