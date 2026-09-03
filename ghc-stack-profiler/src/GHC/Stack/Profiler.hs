@@ -44,11 +44,11 @@ import qualified Debug.Trace
 import qualified Debug.Trace.Binary.Compat as Compat
 
 import GHC.Stack.Profiler.Commands (sendStopProfilingMessage)
+import qualified GHC.Stack.Profiler.Eventlog.Socket as Eventlog.Socket
 import GHC.Stack.Profiler.Core (CallStack (..))
 import qualified GHC.Stack.Profiler.Core as GSPC
 import GHC.Stack.Profiler.Decode
 import qualified GHC.Stack.Profiler.Decode as Decode
-import qualified GHC.Stack.Profiler.Eventlog.Socket as EventlogSocket
 import GHC.Stack.Profiler.Manager
 import GHC.Stack.Profiler.SymbolTable (readSymbolTable)
 
@@ -116,7 +116,7 @@ runNewStackProfilerManager :: Bool -> IO StackProfilerManager
 runNewStackProfilerManager shouldRun = do
   manager <- newStackProfilerManager shouldRun
   startEventLoopThread manager
-  EventlogSocket.registerWithEventlogSocket manager
+  Eventlog.Socket.registerWithEventlogSocket manager
   pure manager
 
 shutdownStackProfilerManager :: StackProfilerManager -> IO ()
