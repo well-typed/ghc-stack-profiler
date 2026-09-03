@@ -23,11 +23,11 @@ module GHC.Stack.Profiler.Core.Internal (
   chunkCallStack_,
 ) where
 
-import GHC.Stack.Profiler.Core.Dehydrate (
+import GHC.Stack.Profiler.Core.Internal.Dehydrate (
   chunkCallStack,
   chunkCallStack_,
  )
-import GHC.Stack.Profiler.Core.Eventlog (
+import GHC.Stack.Profiler.Core.Internal.Eventlog (
   CallStackFrameTag (..),
   MessageTag (..),
   ShortText (..),

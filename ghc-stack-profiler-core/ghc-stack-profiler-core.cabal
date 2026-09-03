@@ -40,11 +40,11 @@ library
     GHC.Stack.Profiler.Core.Internal
 
   other-modules:
-    GHC.Stack.Profiler.Core.CallStack
-    GHC.Stack.Profiler.Core.Dehydrate
-    GHC.Stack.Profiler.Core.Eventlog
-    GHC.Stack.Profiler.Core.Hydrate
-    GHC.Stack.Profiler.Core.Util
+    GHC.Stack.Profiler.Core.Internal.CallStack
+    GHC.Stack.Profiler.Core.Internal.Dehydrate
+    GHC.Stack.Profiler.Core.Internal.Eventlog
+    GHC.Stack.Profiler.Core.Internal.Hydrate
+    GHC.Stack.Profiler.Core.Internal.Util
 
   build-depends:
     base >=4.17 && <4.23,

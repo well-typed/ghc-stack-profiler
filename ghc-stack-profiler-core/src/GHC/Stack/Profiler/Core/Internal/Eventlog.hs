@@ -1,6 +1,6 @@
 {-# LANGUAGE MultiWayIf #-}
 
-module GHC.Stack.Profiler.Core.Eventlog (
+module GHC.Stack.Profiler.Core.Internal.Eventlog (
   -- * Eventlog Message types
   Message (..),
   CallStackChunk (..),
@@ -55,7 +55,7 @@ import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
 import qualified Data.Text.Foreign as TF
 import GHC.Generics
-import GHC.Stack.Profiler.Core.Util
+import GHC.Stack.Profiler.Core.Internal.Util
 import Text.Printf (printf)
 
 -- ----------------------------------------------------------------------------
