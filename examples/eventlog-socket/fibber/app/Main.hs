@@ -9,18 +9,19 @@ import GHC.Stack.Profiler
 import System.Environment (getArgs)
 
 main :: IO ()
-main = withRootStackProfiler False $ \manager -> withStackProfiler manager (SampleIntervalMs 10) $ do
-  startFromEnv
+main =
+  withProfilerWith defaultOptions{shouldStart = False} $ do
+    startFromEnv
 
-  -- Actual work is performed here
-  numArgs <- getArgs
+    -- Actual work is performed here
+    numArgs <- getArgs
 
-  let
-    nums = case numArgs of
-      [] -> [40]
-      xs -> fmap read xs
+    let
+      nums = case numArgs of
+        [] -> [40]
+        xs -> fmap read xs
 
-  traverse_ runFib nums
+    traverse_ runFib nums
  where
   runFib n = do
     traceMarkerIO $ "Starting fib " <> show n

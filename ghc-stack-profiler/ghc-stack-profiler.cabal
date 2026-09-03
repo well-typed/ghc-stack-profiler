@@ -18,7 +18,7 @@ description:
 
   main :: IO ()
   main =
-    'withRootStackProfiler' True $ \ manager ->
+    'withStackProfilerManager' True $ \ manager ->
       'withStackProfilerForMyThread' manager ('SampleIntervalMs' 10) $ do
         ...
   @
@@ -72,6 +72,7 @@ common exts
     NamedFieldPuns
     NoImportQualifiedPost
     PatternSynonyms
+    TypeFamilies
     ViewPatterns
 
   default-language: GHC2021
@@ -106,10 +107,10 @@ library
     GHC.Internal.Stack.Constants.Compat
     GHC.Internal.Stack.Decode.Compat
     GHC.Stack.Annotation.Experimental.Compat
-    GHC.Stack.Profiler.Commands
     GHC.Stack.Profiler.Decode
     GHC.Stack.Profiler.Eventlog.Socket
     GHC.Stack.Profiler.Manager
+    GHC.Stack.Profiler.Sampler
     GHC.Stack.Profiler.Stack.Compat
     GHC.Stack.Profiler.Stack.Decode
     GHC.Stack.Profiler.SymbolTable

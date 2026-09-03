@@ -12,17 +12,11 @@ import System.Exit (exitSuccess)
 import System.Random (randomRIO)
 import Text.Printf (printf)
 
-import GHC.Stack.Profiler (ProfilerSamplingInterval (..), withRootStackProfiler, withStackProfiler)
-
-withGhcStackProfiler :: IO () -> IO ()
-withGhcStackProfiler action =
-  withRootStackProfiler True $ \manager ->
-    withStackProfiler manager (SampleIntervalMs 30) $
-      action
+import GHC.Stack.Profiler
 
 main :: IO ()
 main =
-  withGhcStackProfiler $ do
+  withProfiler $ do
     startFromEnv
     forever $ do
       jumpyJump0

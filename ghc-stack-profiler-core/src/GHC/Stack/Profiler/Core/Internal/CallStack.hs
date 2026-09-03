@@ -1,7 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 module GHC.Stack.Profiler.Core.Internal.CallStack (
-  -- * Serialisable 'ThreadSample'
   CallStack (..),
   StackItem (..),
   SourceLocation (..),

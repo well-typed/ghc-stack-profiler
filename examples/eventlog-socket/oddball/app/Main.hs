@@ -11,24 +11,19 @@ import System.IO (hPutStrLn, stderr)
 import System.Mem (performMajorGC)
 import System.Random
 
-withGhcStackProfiler :: IO () -> IO ()
-withGhcStackProfiler action =
-  withRootStackProfiler True $ \manager ->
-    withStackProfiler manager (SampleIntervalMs 100) $
-      action
-
 main :: IO ()
-main = withGhcStackProfiler $ do
-  -- Register hooks:
-  registerHook HookPostStartEventLogging $
-    traceMarkerIO "HookPostStartEventLogging fired."
-  registerHook HookPreEndEventLogging $
-    hPutStrLn stderr "HookPreEndEventLogging fired."
-  -- Start eventlog-socket:
-  startFromEnv
-  -- Start oddball:
-  _ <- forever $ threadDelay 3000000 >> doRandom
-  pure ()
+main =
+  withProfiler $ do
+    -- Register hooks:
+    registerHook HookPostStartEventLogging $
+      traceMarkerIO "HookPostStartEventLogging fired."
+    registerHook HookPreEndEventLogging $
+      hPutStrLn stderr "HookPreEndEventLogging fired."
+    -- Start eventlog-socket:
+    startFromEnv
+    -- Start oddball:
+    _ <- forever $ threadDelay 3000000 >> doRandom
+    pure ()
 
 -- | Generate a random length stream of random numbers and sum them (poorly)
 doRandom :: IO ()
