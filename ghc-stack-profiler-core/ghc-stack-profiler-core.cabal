@@ -28,6 +28,7 @@ common exts
     LambdaCase
     NamedFieldPuns
     NoImportQualifiedPost
+    PatternSynonyms
     ViewPatterns
 
 library
@@ -35,11 +36,15 @@ library
     warnings, exts
 
   exposed-modules:
-    GHC.Stack.Profiler.Core.Eventlog
-    GHC.Stack.Profiler.Core.SourceLocation
-    GHC.Stack.Profiler.Core.SymbolTable
-    GHC.Stack.Profiler.Core.ThreadSample
-    GHC.Stack.Profiler.Core.Util
+    GHC.Stack.Profiler.Core
+    GHC.Stack.Profiler.Core.Internal
+
+  other-modules:
+    GHC.Stack.Profiler.Core.Internal.CallStack
+    GHC.Stack.Profiler.Core.Internal.Dehydrate
+    GHC.Stack.Profiler.Core.Internal.Eventlog
+    GHC.Stack.Profiler.Core.Internal.Hydrate
+    GHC.Stack.Profiler.Core.Internal.Util
 
   build-depends:
     base >=4.17 && <4.23,
@@ -65,7 +70,9 @@ test-suite ghc-stack-profiler-core-tests
     bytestring,
     ghc-stack-profiler-core,
     tasty >=1.5.4 && <1.6,
+    tasty-hunit,
     tasty-quickcheck >=0.10 && <0.12,
+    text >=2 && <2.2,
 
   default-language: GHC2021
 

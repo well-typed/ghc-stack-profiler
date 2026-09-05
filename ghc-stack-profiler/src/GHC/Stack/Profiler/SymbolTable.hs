@@ -9,7 +9,7 @@ module GHC.Stack.Profiler.SymbolTable (
 
 import Control.Concurrent.STM
 import GHC.Generics (Generic)
-import GHC.Stack.Profiler.Core.SymbolTable
+import GHC.Stack.Profiler.Core
 
 -- | A @'SymbolTableWriter' 'MapTable'@ guarded by a lock for mutable, concurrent access.
 --

@@ -1,0 +1,154 @@
+module GHC.Stack.Profiler.Core.Internal.Hydrate where
+
+import Control.Exception
+import Data.Either (partitionEithers)
+import Data.IntMap.Strict (IntMap)
+import qualified Data.IntMap.Strict as IntMap
+import Data.Text (Text)
+import qualified Data.Text as Text
+import GHC.Generics
+import GHC.Stack.Profiler.Core.Internal.CallStack
+import GHC.Stack.Profiler.Core.Internal.Eventlog
+import GHC.Stack.Profiler.Core.Internal.Util
+
+data BinaryCallStackDecodeError
+  = StringIdNotFound StringId
+  | SourceLocationIdNotFound SourceLocationId
+  deriving (Show)
+
+instance Exception BinaryCallStackDecodeError where
+  displayException = \case
+    StringIdNotFound sid ->
+      "Failed to decode a CallStackChunk. Failed to find a String with the key: " ++ show (getStringId sid)
+    SourceLocationIdNotFound sid ->
+      "Failed to decode a CallStackChunk. Failed to find a SourceLocation with the key: " ++ show (getSourceLocationId sid)
+
+-- | Generic implementation to turn 'CallStackChunk' into the much richer
+-- 'CallStack'.
+hydrateEventlogCallStackMessage :: SymbolTableReader -> CallStackChunk -> (CallStack, [BinaryCallStackDecodeError])
+hydrateEventlogCallStackMessage decodeTable msg =
+  let
+    decodeItem :: CallStackFrame -> Either BinaryCallStackDecodeError StackItem
+    decodeItem = \case
+      CallStackFrameIpe ipeId ->
+        Right $ IpeId ipeId
+      CallStackFrameAnn stringId mSrcLocId -> do
+        str <-
+          maybe
+            (Left $ StringIdNotFound stringId)
+            (Right . Text.unpack)
+            (lookupStringId decodeTable stringId)
+        srcLoc <- case mSrcLocId of
+          Nothing -> pure Nothing
+          Just srcLocId ->
+            maybe
+              (Left $ SourceLocationIdNotFound srcLocId)
+              (Right . Just)
+              (lookupSourceLocationId decodeTable srcLocId)
+        pure $ UserAnnotation str srcLoc
+
+    itemsOrErros = map decodeItem (callStackChunk msg)
+    (errors, items) = partitionEithers itemsOrErros
+  in
+    ( MkCallStack
+        { callCapabilityId = callStackChunkCapabilityId msg
+        , callThreadId = callStackChunkThreadId msg
+        , callStack = items
+        }
+    , errors
+    )
+
+-- | Implementation agnostic symbol table reader helping consumers to decode
+-- 'Message's into a 'CallStack'.
+--
+-- As during deserialisation, we do not discover new Messages, the abstract 'SymbolTableReader'
+-- doesn't need to thread the implementation through the lookup operations.
+data SymbolTableReader = MkSymbolTableReader
+  { lookupStringId :: StringId -> Maybe Text
+  -- ^ Lookup the 'StringId' in the symbol table.
+  -- This operation throws an exception if the 'StringId' is unknown.
+  , lookupSourceLocationId :: SourceLocationId -> Maybe SourceLocation
+  -- ^ Lookup the 'SourceLocationId' in the symbol table.
+  -- This operation throws an exception if the 'SourceLocationId' is unknown.
+  }
+  deriving (Generic)
+
+data MissingKeyError
+  = -- | We failed to find the 'StringId' to fully decode the 'SourceLocationId'.
+    KeyStringIdNotFound SourceLocationId StringId
+  deriving (Show)
+
+instance Exception MissingKeyError where
+  displayException = \case
+    KeyStringIdNotFound srcLocId stringId ->
+      "While decoding the Source Location ("
+        ++ show (getSourceLocationId srcLocId)
+        ++ "), "
+        ++ "the String ("
+        ++ show (getStringId stringId)
+        ++ ") couldn't be found"
+
+data IntMapTable = MkIntMapTable
+  { stringLookupTable :: !(IntMap Text)
+  , srcLocLookupTable :: !(IntMap SourceLocation)
+  }
+  deriving (Eq, Ord, Show, Generic)
+
+emptyIntMapTable :: IntMapTable
+emptyIntMapTable =
+  MkIntMapTable
+    { stringLookupTable = IntMap.empty
+    , srcLocLookupTable = IntMap.empty
+    }
+
+mkIntMapSymbolTableReader :: IntMapTable -> SymbolTableReader
+mkIntMapSymbolTableReader tbl =
+  MkSymbolTableReader
+    { lookupStringId = flip lookupTextMessage tbl
+    , lookupSourceLocationId = flip lookupSourceLocationMessage tbl
+    }
+
+{-# INLINEABLE insertTextMessage #-}
+insertTextMessage :: StringDef -> IntMapTable -> IntMapTable
+insertTextMessage msg tbl =
+  tbl
+    { stringLookupTable =
+        IntMap.insert
+          (idToInt $ stringDefId msg)
+          (stringDefBody msg)
+          (stringLookupTable tbl)
+    }
+
+{-# INLINEABLE insertSourceLocationMessage #-}
+insertSourceLocationMessage :: SourceLocationDef -> IntMapTable -> Either MissingKeyError IntMapTable
+insertSourceLocationMessage msg tbl = do
+  let
+    srcLocId = sourceLocationDefId msg
+    fileId = sourceLocationDefFilename msg
+
+  fileName <-
+    maybe (Left $ KeyStringIdNotFound srcLocId fileId) Right $ lookupTextMessage fileId tbl
+
+  pure
+    tbl
+      { srcLocLookupTable =
+          IntMap.insert
+            (idToInt srcLocId)
+            (mkSourceLocation fileName)
+            (srcLocLookupTable tbl)
+      }
+ where
+  mkSourceLocation fileName =
+    MkSourceLocation
+      { line = sourceLocationDefRow msg
+      , column = sourceLocationDefColumn msg
+      , fileName = fileName
+      }
+
+{-# INLINEABLE lookupTextMessage #-}
+lookupTextMessage :: StringId -> IntMapTable -> Maybe Text
+lookupTextMessage sid tbl = IntMap.lookup (idToInt sid) (stringLookupTable tbl)
+
+{-# INLINEABLE lookupSourceLocationMessage #-}
+lookupSourceLocationMessage :: SourceLocationId -> IntMapTable -> Maybe SourceLocation
+lookupSourceLocationMessage sid tbl = IntMap.lookup (idToInt sid) (srcLocLookupTable tbl)

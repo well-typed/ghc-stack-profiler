@@ -1,76 +1,88 @@
 module GHC.Stack.Profiler.Decode (
+  CallStackSample (..),
   StackSymbolTable,
   SymbolTableWriter,
   initMessages,
-  serializeCallStackMessage,
-  serializeBinaryEventlogMessage,
-  serializeBinaryEventlogMessages,
-  threadSampleToCallStackMessage,
-  binaryEventlogDefinitions,
+  serializeCallStack,
+  serializeMessage,
+  serializeMessages,
+  decodeToCallStack,
+  definitions,
 ) where
 
 import Control.Concurrent.STM
+import Control.Exception (assert)
 import Data.Binary
 import Data.Binary.Put
 import qualified Data.ByteString.Lazy as LBS
 import qualified Data.List.NonEmpty as NonEmpty
-
-import GHC.Conc.Sync (fromThreadId)
-
-import Control.Exception (assert)
-import GHC.Stack.Profiler.Core.Eventlog
-import GHC.Stack.Profiler.Core.SymbolTable
-import GHC.Stack.Profiler.Core.ThreadSample
+import GHC.Generics (Generic)
+import GHC.Stack.CloneStack (StackSnapshot)
+import GHC.Stack.Profiler.Core
 import GHC.Stack.Profiler.Stack.Decode (decodeStackWithIpProvId)
 import GHC.Stack.Profiler.SymbolTable
 
-threadSampleToCallStackMessage :: ThreadSample -> IO CallStackMessage
-threadSampleToCallStackMessage sample = do
-  frames <- decodeStackWithIpProvId $ threadSampleStackSnapshot sample
+-- | A 'CallStackSample' is a snapshot of a threads RTS callstack.
+-- This callstack is a copy of the original callstack, so can be traversed and
+-- decoded without affecting the running thread.
+--
+-- The 'StackSnapshot' is a boxed value and needs to be garbage collected.
+-- Note, as long as 'StackSnapshot' is alive, you keep the full callstack
+-- alive, which might be quite expensive.
+data CallStackSample = CallStackSample
+  { callStackSampleThreadId :: !ThreadId
+  , callStackSampleCapabilityId :: !CapabilityId
+  , callStackSampleStackSnapshot :: !StackSnapshot
+  }
+  deriving (Generic)
+
+decodeToCallStack :: CallStackSample -> IO CallStack
+decodeToCallStack sample = do
+  frames <- decodeStackWithIpProvId $ callStackSampleStackSnapshot sample
   let
     -- removes immediate duplicates
     callStackItems = fmap NonEmpty.head $ NonEmpty.group frames
 
   pure
-    MkCallStackMessage
-      { callThreadId = fromThreadId $ threadSampleId sample
-      , callCapabilityId = threadSampleCapability sample
+    MkCallStack
+      { callThreadId = callStackSampleThreadId sample
+      , callCapabilityId = callStackSampleCapabilityId sample
       , callStack = callStackItems
       }
 
-serializeCallStackMessage :: StackSymbolTable -> CallStackMessage -> STM [BinaryEventlogMessage]
-serializeCallStackMessage tableRef callStackMessage = do
+serializeCallStack :: StackSymbolTable -> CallStack -> STM [Message]
+serializeCallStack tableRef callStackMessage = do
   table <- readSymbolTable tableRef
   let
-    (eventlogMessages, newTable) = dehydrateCallStackMessage table callStackMessage
+    (eventlogMessages, newTable) = dehydrateCallStack table callStackMessage
   writeSymbolTable newTable tableRef
   pure eventlogMessages
 
-serializeBinaryEventlogMessage :: BinaryEventlogMessage -> LBS.ByteString
-serializeBinaryEventlogMessage = runPut . put
+serializeMessage :: Message -> LBS.ByteString
+serializeMessage = runPut . put
 
-serializeBinaryEventlogMessages :: [BinaryEventlogMessage] -> [LBS.ByteString]
-serializeBinaryEventlogMessages = map serializeBinaryEventlogMessage
+serializeMessages :: [Message] -> [LBS.ByteString]
+serializeMessages = map serializeMessage
 
 initMessages :: SymbolTableWriter MapTable -> [LBS.ByteString]
 initMessages symbolTable =
   let
-    (stringDefs, srcLocDefs) = binaryEventlogDefinitions symbolTable
+    (stringDefs, srcLocDefs) = definitions symbolTable
     binaryEventlogMessages =
       ( map StringDef stringDefs
           ++ map SourceLocationDef srcLocDefs
       )
   in
-    serializeBinaryEventlogMessages binaryEventlogMessages
+    serializeMessages binaryEventlogMessages
 
-binaryEventlogDefinitions :: SymbolTableWriter MapTable -> ([BinaryStringMessage], [BinarySourceLocationMessage])
-binaryEventlogDefinitions table =
+definitions :: SymbolTableWriter MapTable -> ([StringDef], [SourceLocationDef])
+definitions table =
   let
     knownStrings = getKnownStrings $ writerTable table
     knownSrcLocs = getKnownSourceLocations $ writerTable table
 
     stringDefs =
-      fmap (uncurry MkBinaryStringMessage) knownStrings
+      fmap (uncurry MkStringDef) knownStrings
 
     srcLocDefs =
       map (uncurry go) knownSrcLocs
@@ -79,16 +91,16 @@ binaryEventlogDefinitions table =
     , srcLocDefs
     )
  where
-  go :: SourceLocationId -> SourceLocation -> BinarySourceLocationMessage
+  go :: SourceLocationId -> SourceLocation -> SourceLocationDef
   go sid s =
     let
       (fileId, newFileName, _) = lookupOrInsertText table (writerTable table) (fileName s)
     in
       -- These should always be found
       assert (not newFileName) $
-        MkBinarySourceLocationMessage
-          { binarySourceLocationMessageId = sid
-          , binarySourceLocationRow = line s
-          , binarySourceLocationColumn = column s
-          , binarySourceLocationFilename = fileId
+        MkSourceLocationDef
+          { sourceLocationDefId = sid
+          , sourceLocationDefRow = line s
+          , sourceLocationDefColumn = column s
+          , sourceLocationDefFilename = fileId
           }
