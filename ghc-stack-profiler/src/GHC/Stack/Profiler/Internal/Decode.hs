@@ -1,4 +1,4 @@
-module GHC.Stack.Profiler.Decode (
+module GHC.Stack.Profiler.Internal.Decode (
   CallStackSample (..),
   StackSymbolTable,
   SymbolTableWriter,
@@ -19,8 +19,8 @@ import qualified Data.List.NonEmpty as NonEmpty
 import GHC.Generics (Generic)
 import GHC.Stack.CloneStack (StackSnapshot)
 import GHC.Stack.Profiler.Core
-import GHC.Stack.Profiler.Stack.Decode (decodeStackWithIpProvId)
-import GHC.Stack.Profiler.SymbolTable
+import GHC.Stack.Profiler.Internal.Stack.Decode (decodeStackWithIpProvId)
+import GHC.Stack.Profiler.Internal.SymbolTable
 
 -- | A 'CallStackSample' is a snapshot of a threads RTS callstack.
 -- This callstack is a copy of the original callstack, so can be traversed and

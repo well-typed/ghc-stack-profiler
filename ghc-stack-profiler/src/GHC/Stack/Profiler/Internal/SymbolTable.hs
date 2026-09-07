@@ -1,4 +1,4 @@
-module GHC.Stack.Profiler.SymbolTable (
+module GHC.Stack.Profiler.Internal.SymbolTable (
   -- * 'StackSymbolTable' type
   StackSymbolTable,
   emptySymbolTable,

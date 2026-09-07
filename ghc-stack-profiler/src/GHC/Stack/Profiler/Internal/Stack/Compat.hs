@@ -1,6 +1,6 @@
 {-# LANGUAGE CPP #-}
 
-module GHC.Stack.Profiler.Stack.Compat (
+module GHC.Stack.Profiler.Internal.Stack.Compat (
   lookupIpeIdForStackFrame,
 ) where
 
@@ -9,7 +9,7 @@ import GHC.Internal.InfoProv.Types.Compat
 import GHC.Internal.Stack.Decode.Compat
 
 #if !MIN_VERSION_ghc_internal(9,1500,0)
-import GHC.Stack.Profiler.Util (castPtrToWord64)
+import GHC.Stack.Profiler.Internal.Util (castPtrToWord64)
 #endif
 
 lookupIpeIdForStackFrame :: StackInfoTable -> IO (Maybe Word64)

@@ -1,4 +1,4 @@
-module GHC.Stack.Profiler.Manager (
+module GHC.Stack.Profiler.Internal.Manager (
   Manager (..),
   newManager,
   stopManager,
@@ -49,8 +49,8 @@ import qualified Data.Map.Strict as Map
 import qualified Debug.Trace
 import qualified Debug.Trace.Binary.Compat as Compat
 import GHC.Generics (Generic)
-import qualified GHC.Stack.Profiler.Decode as Decode
-import GHC.Stack.Profiler.SymbolTable
+import qualified GHC.Stack.Profiler.Internal.Decode as Decode
+import GHC.Stack.Profiler.Internal.SymbolTable
 
 -- NOTE: Part of the public API.
 

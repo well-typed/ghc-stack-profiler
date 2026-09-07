@@ -107,14 +107,14 @@ library
     GHC.Internal.Stack.Constants.Compat
     GHC.Internal.Stack.Decode.Compat
     GHC.Stack.Annotation.Experimental.Compat
-    GHC.Stack.Profiler.Decode
-    GHC.Stack.Profiler.Eventlog.Socket
-    GHC.Stack.Profiler.Manager
-    GHC.Stack.Profiler.Sampler
-    GHC.Stack.Profiler.Stack.Compat
-    GHC.Stack.Profiler.Stack.Decode
-    GHC.Stack.Profiler.SymbolTable
-    GHC.Stack.Profiler.Util
+    GHC.Stack.Profiler.Internal.Decode
+    GHC.Stack.Profiler.Internal.Eventlog.Socket
+    GHC.Stack.Profiler.Internal.Manager
+    GHC.Stack.Profiler.Internal.Sampler
+    GHC.Stack.Profiler.Internal.Stack.Compat
+    GHC.Stack.Profiler.Internal.Stack.Decode
+    GHC.Stack.Profiler.Internal.SymbolTable
+    GHC.Stack.Profiler.Internal.Util
 
   build-depends:
     async >=2.2 && <2.2.6,

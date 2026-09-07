@@ -52,10 +52,10 @@ import qualified Data.Set as Set
 import GHC.Conc
 import GHC.Conc.Sync (threadLabel)
 import GHC.IsList (IsList (..))
-import qualified GHC.Stack.Profiler.Eventlog.Socket as Eventlog.Socket
-import GHC.Stack.Profiler.Manager
-import GHC.Stack.Profiler.Sampler (Interval (MkIntervalMillis), SamplerDescr (..), startSampler, stopSampler, withSampler)
-import GHC.Stack.Profiler.Util (DList, WriterT, runWriterT, tell)
+import qualified GHC.Stack.Profiler.Internal.Eventlog.Socket as Eventlog.Socket
+import GHC.Stack.Profiler.Internal.Manager
+import GHC.Stack.Profiler.Internal.Sampler (Interval (MkIntervalMillis), SamplerDescr (..), startSampler, stopSampler, withSampler)
+import GHC.Stack.Profiler.Internal.Util (DList, WriterT, runWriterT, tell)
 
 -------------------------------------------------------------------------------
 -- High-level API
