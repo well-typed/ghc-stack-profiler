@@ -59,7 +59,7 @@ library
 
   default-language: GHC2021
 
-test-suite ghc-stack-profiler-core-tests
+test-suite ghc-stack-profiler-tests
   import: warnings, exts
   type: exitcode-stdio-1.0
   hs-source-dirs: test

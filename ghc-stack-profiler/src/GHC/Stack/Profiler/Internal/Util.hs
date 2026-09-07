@@ -1,6 +1,10 @@
 module GHC.Stack.Profiler.Internal.Util (
   castPtrToWord64,
 
+  -- * Glob Patterns
+  Glob,
+  matches,
+
   -- * DList
   DList,
 
@@ -11,6 +15,7 @@ module GHC.Stack.Profiler.Internal.Util (
 ) where
 
 import Control.Monad.IO.Class (MonadIO (..))
+import Data.String (IsString (..))
 import Data.Word
 import Foreign.Ptr
 import GHC.IsList (IsList (..))
@@ -18,6 +23,76 @@ import GHC.IsList (IsList (..))
 castPtrToWord64 :: Ptr a -> Word64
 castPtrToWord64 ptr = case ptrToWordPtr ptr of
   WordPtr w -> fromIntegral w -- On platforms that use 32-bit systems, the key is still Word64
+
+-------------------------------------------------------------------------------
+-- Glob
+-------------------------------------------------------------------------------
+
+-- | A glob pattern.
+--
+--   Use `fromString` to construct glob patterns from strings.
+--
+--   A "*" matches any string, including the empty string.
+--
+--   One can remove the special meaning of "*" by preceding it with a backslash.
+newtype Glob = Glob [GlobPart]
+
+data GlobPart = Wildcard | Literal String
+
+instance IsString Glob where
+  fromString :: String -> Glob
+  fromString = Glob . go
+   where
+    go :: String -> [GlobPart]
+    go [] = []
+    go ('*' : pat) = Wildcard : go pat
+    go ('\\' : '*' : pat) = literal ['*'] (go pat)
+    go (c : pat) = literal [c] (go pat)
+
+    literal :: String -> [GlobPart] -> [GlobPart]
+    literal lit (Literal lit' : pat) = Literal (lit <> lit') : pat
+    literal lit pat = Literal lit : pat
+
+instance Show Glob where
+  showsPrec :: Int -> Glob -> ShowS
+  showsPrec p (Glob pat) = showsPrec p (go pat)
+   where
+    go [] = []
+    go (Wildcard : pat') = '*' : go pat'
+    go (Literal lit : pat') = escape lit <> go pat'
+
+    escape :: String -> String
+    escape [] = []
+    escape ('*' : str) = '\\' : '*' : escape str
+    escape (c : str) = c : escape str
+
+-- | Test if the glob pattern matches the given string.
+matches :: Glob -> String -> Bool
+matches (Glob parts) = go parts
+ where
+  go [] _str = True
+  go [Wildcard] _str = True
+  go (Wildcard : pat'@(Wildcard : _)) str = go pat' str
+  go (Wildcard : Literal lit : pat') str = any (go pat') (skipWildcardLiteral lit str)
+  go (Literal lit : pat') str = maybe False (go pat') (skipPrefix lit str)
+
+  -- Stream the possible remainders after matching a wildcard followed by a literal.
+  --
+  -- NOTE: O( n * m ) where n = length str and m = length lit.
+  skipWildcardLiteral :: String -> String -> [String]
+  skipWildcardLiteral _lit [] = []
+  skipWildcardLiteral lit str@(_c : str')
+    -- NOTE: yield suff, but continue searching from str', in case of overlaps.
+    | Just suff <- skipPrefix lit str = suff : skipWildcardLiteral lit str'
+    | otherwise = skipWildcardLiteral lit str'
+
+  -- Stream the possible remainders after matching a literal.
+  --
+  -- NOTE: O( m ) where m = length lit
+  skipPrefix :: String -> String -> Maybe String
+  skipPrefix [] str = Just str
+  skipPrefix (_ : _) [] = Nothing
+  skipPrefix (l : lit') (c : str') = if l == c then skipPrefix lit' str' else Nothing
 
 -------------------------------------------------------------------------------
 -- DList
