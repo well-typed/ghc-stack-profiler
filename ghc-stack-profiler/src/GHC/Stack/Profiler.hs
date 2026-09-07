@@ -18,6 +18,7 @@ module GHC.Stack.Profiler (
     sampleInterval
   ),
   defaultOptions,
+  ThreadFilter,
   ThreadLabel,
   ShouldSample (..),
   Interval (..),
@@ -145,7 +146,7 @@ stopProfiler MkProfiler{profilerManager, profilerSampler} = do
 --     The default is @10@ milliseconds.
 data Options = MkOptions
   { shouldStart :: !Bool
-  , shouldSample :: ThreadId -> Maybe ThreadLabel -> ShouldSample
+  , shouldSample :: ThreadFilter
   , sampleRtsThreads :: !Bool
   , sampleProfilerThreads :: !Bool
   , sampleInterval :: !Interval
@@ -162,12 +163,15 @@ defaultOptions =
     , sampleInterval = MkIntervalMillis 10
     }
 
+-- | A thread filter, used to determine which threads should be sampled.
+--
+--   Used in the `shouldSample` field of `Options`.
+type ThreadFilter = ThreadId -> Maybe ThreadLabel -> ShouldSample
+
 -- | A thread label, as set by `labelThread`.
 type ThreadLabel = String
 
--- | A flag to indicate whether or not a thread should be sampled.
---
---   Used in the `shouldSample` field of `Options`.
+-- | The result type of a `ThreadFilter`.
 data ShouldSample
   = -- | The thread should be sampled.
     Yes
@@ -181,16 +185,18 @@ data ShouldSample
 --   If the thread label matches the given pattern, the thread filter returns `Yes`.
 --   Otherwise, the thread filter returns `No`.
 --   The thread filter never returns `Never`.
-sampleIfMatches :: Glob -> Maybe ThreadLabel -> ShouldSample
-sampleIfMatches glob = maybe No $ fromBool . (glob `matches`)
+sampleIfMatches :: Glob -> ThreadFilter
+sampleIfMatches glob =
+  const $ maybe No $ fromBool . (glob `matches`)
 
 -- | Construct a thread filter from a `Glob` pattern.
 --
 --   If the thread label matches the given pattern, the thread filter returns `No`.
 --   Otherwise, the thread filter returns `Yes`.
 --   The thread filter never returns `Never`.
-sampleIfNotMatches :: Glob -> Maybe ThreadLabel -> ShouldSample
-sampleIfNotMatches glob = maybe Yes $ fromBool . not . (glob `matches`)
+sampleIfNotMatches :: Glob -> ThreadFilter
+sampleIfNotMatches glob =
+  const $ maybe Yes $ fromBool . not . (glob `matches`)
 
 -- | Internal helper.
 --
