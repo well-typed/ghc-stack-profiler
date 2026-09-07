@@ -162,6 +162,19 @@ library
     build-depends:
       eventlog-socket ^>=0.1.3
 
+test-suite ghc-stack-profiler-tests
+  import: warnings, exts
+  type: exitcode-stdio-1.0
+  hs-source-dirs: test
+  main-is: Main.hs
+  build-depends:
+    base,
+    ghc-stack-profiler,
+    tasty >=1.5.4 && <1.6,
+    tasty-hunit,
+
+  default-language: GHC2021
+
 source-repository head
   type: git
   location: https://github.com/well-typed/ghc-stack-profiler.git

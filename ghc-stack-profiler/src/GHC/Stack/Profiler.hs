@@ -22,6 +22,12 @@ module GHC.Stack.Profiler (
   ShouldSample (..),
   Interval (..),
 
+  -- *** Glob Patterns
+  Glob,
+  matches,
+  sampleIfMatches,
+  sampleIfNotMatches,
+
   -- * Low-Level API
 
   -- ** Manager
@@ -55,7 +61,7 @@ import GHC.IsList (IsList (..))
 import qualified GHC.Stack.Profiler.Internal.Eventlog.Socket as Eventlog.Socket
 import GHC.Stack.Profiler.Internal.Manager
 import GHC.Stack.Profiler.Internal.Sampler (Interval (MkIntervalMillis), SamplerDescr (..), startSampler, stopSampler, withSampler)
-import GHC.Stack.Profiler.Internal.Util (DList, WriterT, runWriterT, tell)
+import GHC.Stack.Profiler.Internal.Util (DList, Glob, WriterT, matches, runWriterT, tell)
 
 -------------------------------------------------------------------------------
 -- High-level API
@@ -170,6 +176,30 @@ data ShouldSample
   | -- | The thread should never be sampled.
     Never
 
+-- | Construct a thread filter from a `Glob` pattern.
+--
+--   If the thread label matches the given pattern, the thread filter returns `Yes`.
+--   Otherwise, the thread filter returns `No`.
+--   The thread filter never returns `Never`.
+sampleIfMatches :: Glob -> Maybe ThreadLabel -> ShouldSample
+sampleIfMatches glob = maybe No $ fromBool . (glob `matches`)
+
+-- | Construct a thread filter from a `Glob` pattern.
+--
+--   If the thread label matches the given pattern, the thread filter returns `No`.
+--   Otherwise, the thread filter returns `Yes`.
+--   The thread filter never returns `Never`.
+sampleIfNotMatches :: Glob -> Maybe ThreadLabel -> ShouldSample
+sampleIfNotMatches glob = maybe Yes $ fromBool . not . (glob `matches`)
+
+-- | Internal helper.
+--
+--   Construct a `ShouldSample` from a `Bool`.
+--
+--   Maps `True` to `Yes` and `False` to `No`.
+fromBool :: Bool -> ShouldSample
+fromBool b = if b then Yes else No
+
 -------------------------------------------------------------------------------
 -- Low-level API
 -------------------------------------------------------------------------------
@@ -268,7 +298,12 @@ samplerWith ::
 samplerWith samplerManager neverSetRef options =
   MkSamplerDescr{samplerManager, samplerThreads, sampleInterval}
  where
-  MkOptions{shouldSample, sampleRtsThreads, sampleProfilerThreads, sampleInterval} = options
+  MkOptions
+    { shouldSample
+    , sampleRtsThreads = fromBool -> shouldSampleRtsThreads
+    , sampleProfilerThreads = fromBool -> shouldSampleProfilerThreads
+    , sampleInterval
+    } = options
 
   samplerThreads = do
     neverSet <- readIORef neverSetRef
@@ -293,29 +328,24 @@ samplerWith samplerManager neverSetRef options =
           isProfilerThread <- liftIO (isProfilerThreadFor samplerManager threadId)
           if isProfilerThread
             then
-              if sampleProfilerThreads
-                then yes threadId -- Sample it.
-                else never threadId -- Add it to the neverSet.
+              evalShouldSample threadId shouldSampleProfilerThreads
             else do
               maybeThreadLabel <- liftIO (threadLabel threadId)
               -- If the threadId is an RTS thread,
               -- it should be sampled if-and-only-if shouldSampleRtsThreads is true.
               if isRtsThread maybeThreadLabel
                 then
-                  if sampleRtsThreads
-                    then yes threadId -- Sample it.
-                    else never threadId -- Add it to the neverSet.
+                  evalShouldSample threadId shouldSampleRtsThreads
                 else
                   -- Otherwise, run the user-provided predicate and follow its instructions.
-                  case shouldSample threadId maybeThreadLabel of
-                    Yes -> yes threadId
-                    No -> no threadId
-                    Never -> never threadId
+                  evalShouldSample threadId (shouldSample threadId maybeThreadLabel)
 
-    yes, no, never :: ThreadId -> WriterT (DList ThreadId) IO (Maybe ThreadId)
-    yes threadId = pure $ Just threadId
-    no _threadId = pure Nothing
-    never threadId = tell (fromList [threadId]) >> pure Nothing
+    -- Evaluate a `ShouldSample` judgement for the given threadId.
+    evalShouldSample :: ThreadId -> ShouldSample -> WriterT (DList ThreadId) IO (Maybe ThreadId)
+    evalShouldSample threadId = \case
+      Yes -> pure (Just threadId)
+      No -> pure Nothing
+      Never -> tell (fromList [threadId]) >> pure Nothing
 
 -- | Was the given thread created by this library?
 isProfilerThreadFor :: Manager -> ThreadId -> IO Bool
