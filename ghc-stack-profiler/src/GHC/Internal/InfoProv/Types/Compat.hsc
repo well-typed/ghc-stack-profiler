@@ -11,7 +11,7 @@ import Foreign.Ptr
 #if !MIN_VERSION_ghc_internal(9,1500,0)
 import Foreign.C.Types
 import Foreign.Marshal.Alloc
-import GHC.Stack.Profiler.Util (castPtrToWord64)
+import GHC.Stack.Profiler.Internal.Util (castPtrToWord64)
 #endif
 
 import qualified GHC.Internal.InfoProv.Types as InfoProv

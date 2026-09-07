@@ -1,15 +1,15 @@
 {-# LANGUAGE CPP #-}
 
-module GHC.Stack.Profiler.Eventlog.Socket (
+module GHC.Stack.Profiler.Internal.Eventlog.Socket (
   registerWithEventlogSocket,
 ) where
 
-import GHC.Stack.Profiler.Manager (Manager)
+import GHC.Stack.Profiler.Internal.Manager (Manager)
 
 #ifdef EVENTLOG_SOCKET_SUPPORT
 import qualified Control.Monad.STM as STM
 import GHC.Eventlog.Socket (CommandId (..), Hook (..), registerCommand, registerHook, registerNamespace)
-import GHC.Stack.Profiler.Manager (disableEventLogging, startProfiling, stopProfiling, sendEnableEventlogMessage, sendDisableEventlogMessage, sendPublishInitEventMessages)
+import GHC.Stack.Profiler.Internal.Manager (disableEventLogging, startProfiling, stopProfiling, sendEnableEventlogMessage, sendDisableEventlogMessage, sendPublishInitEventMessages)
 import Debug.Trace (traceMarkerIO)
 #endif
 

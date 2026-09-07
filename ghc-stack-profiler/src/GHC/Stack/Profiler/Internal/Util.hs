@@ -1,4 +1,4 @@
-module GHC.Stack.Profiler.Util (
+module GHC.Stack.Profiler.Internal.Util (
   castPtrToWord64,
 
   -- * DList

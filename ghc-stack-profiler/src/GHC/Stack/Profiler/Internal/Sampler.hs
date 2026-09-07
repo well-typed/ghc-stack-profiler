@@ -1,4 +1,4 @@
-module GHC.Stack.Profiler.Sampler (
+module GHC.Stack.Profiler.Internal.Sampler (
   Interval (..),
   SamplerDescr (..),
   withSampler,
@@ -21,13 +21,13 @@ import GHC.Conc.Sync (fromThreadId)
 import GHC.Internal.Control.Monad (forever)
 import GHC.Stack.CloneStack (cloneThreadStack)
 import qualified GHC.Stack.Profiler.Core as GSPC
-import GHC.Stack.Profiler.Decode (
+import GHC.Stack.Profiler.Internal.Decode (
   CallStackSample (..),
   decodeToCallStack,
   serializeCallStack,
   serializeMessages,
  )
-import GHC.Stack.Profiler.Manager (
+import GHC.Stack.Profiler.Internal.Manager (
   ControlMessage (..),
   Manager (..),
   Sampler (..),
