@@ -420,7 +420,7 @@ toSpeedscopeProfiles programName samples aggregationMode =
       -- NOTE: groupSort is assumed to be stable
       PerThread -> groupSort $ toThreadSample <$> reverse samples
       PerCapability -> groupSort $ toCapabilitySample <$> reverse samples
-      NoAggregation -> [(1, toSingleProfileSample <$> reverse samples)]
+      NoAggregation -> [(0, toSingleProfileSample <$> reverse samples)]
    where
     toThreadSample :: Sample -> (Word64, [Int])
     toThreadSample sample = (fromIntegral . sampleThreadId $ sample, toSingleProfileSample sample)
