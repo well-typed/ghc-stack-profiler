@@ -105,7 +105,11 @@ startSampler sampler@MkSamplerDescr{samplerManager, sampleInterval} = do
   putMVar barrier ()
   pure samplerThread
 
+-- NOTE: `stopSampler` is part of the public API.
+
 -- | Stop a `Sampler` thread.
+--
+--   @since 0.5.0.0
 stopSampler :: Manager -> Sampler -> IO ()
 stopSampler manager samplerThread = do
   cancelSampler samplerThread

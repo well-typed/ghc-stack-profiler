@@ -20,12 +20,12 @@ module GHC.Stack.Profiler (
     sampleInterval
   ),
   defaultOptions,
+  Interval (..),
+
+  -- *** Thread Filters and Glob Patterns
   ThreadFilter,
   ThreadLabel,
   ShouldSample (..),
-  Interval (..),
-
-  -- *** Glob Patterns
   Glob,
   matches,
   sampleInclude,
@@ -85,6 +85,8 @@ import Text.Read (readMaybe)
 -- Profiler
 
 -- | A profiler handle, which can be used to stop the profiler with `stopProfiler`.
+--
+--   @since 0.5.0.0
 data Profiler = MkProfiler
   { profilerManager :: !Manager
   , profilerSampler :: !Sampler
@@ -94,16 +96,22 @@ data Profiler = MkProfiler
 --
 --   __Warning:__ This function spawns a `Manager` thread.
 --   Having multiple concurrent `Manager` threads is unsupported and unsafe.
+--
+--   @since 0.5.0.0
 withProfiler :: IO a -> IO a
 withProfiler action =
   bracket startProfiler stopProfiler (const action)
 
 -- | Variant of `withProfiler` that accepts `Options`.
+--
+--   @since 0.5.0.0
 withProfilerWith :: Options -> IO a -> IO a
 withProfilerWith options action =
   bracket (startProfilerWith options) stopProfiler (const action)
 
 -- | Variant of `withProfiler` that reads `Options` from the environment.
+--
+--   @since 0.5.0.0
 withProfilerFromEnv :: IO a -> IO a
 withProfilerFromEnv action =
   bracket startProfilerFromEnv stopProfiler (const action)
@@ -115,11 +123,15 @@ withProfilerFromEnv action =
 --
 --   __Warning:__ This function spawns a `Manager` thread.
 --   Having multiple concurrent `Manager` threads is unsupported and unsafe.
+--
+--   @since 0.5.0.0
 startProfiler :: IO Profiler
 startProfiler =
   startProfilerWith defaultOptions
 
 -- | Variant of `startProfiler` that accepts `Options`.
+--
+--   @since 0.5.0.0
 startProfilerWith :: Options -> IO Profiler
 startProfilerWith options = do
   profilerManager <- startManager (wait options)
@@ -127,11 +139,15 @@ startProfilerWith options = do
   pure MkProfiler{profilerManager, profilerSampler}
 
 -- | Variant of `startProfiler` that accepts `Options`.
+--
+--   @since 0.5.0.0
 startProfilerFromEnv :: IO Profiler
 startProfilerFromEnv =
   startProfilerWith =<< fromEnv
 
 -- | Stop a `Profiler`.
+--
+--   @since 0.5.0.0
 stopProfiler :: Profiler -> IO ()
 stopProfiler MkProfiler{profilerManager, profilerSampler} = do
   stopSampler profilerManager profilerSampler
@@ -140,7 +156,7 @@ stopProfiler MkProfiler{profilerManager, profilerSampler} = do
 -------------------------------------------------------------------------------
 -- Options
 
--- | The options `withProfilerWith` and `startProfilerWith`.
+-- | The options for `withProfilerWith` and `startProfilerWith`.
 --
 --   To construct options, modify `defaultOptions` using the fields:
 --
@@ -167,6 +183,8 @@ stopProfiler MkProfiler{profilerManager, profilerSampler} = do
 --   [@`GHC.Stack.Profiler.sampleInterval` :: `Interval`@]:
 --     Determines the sampling interval.
 --     The default is @10@ milliseconds.
+--
+--   @since 0.5.0.0
 data Options = MkOptions
   { wait :: !Bool
   , shouldSample :: ThreadFilter
@@ -176,6 +194,8 @@ data Options = MkOptions
   }
 
 -- | The default `Options`. See `Options` for the default values.
+--
+--   @since 0.5.0.0
 defaultOptions :: Options
 defaultOptions =
   MkOptions
@@ -189,12 +209,18 @@ defaultOptions =
 -- | A thread filter, used to determine which threads should be sampled.
 --
 --   Used in the `shouldSample` field of `Options`.
+--
+--   @since 0.5.0.0
 type ThreadFilter = ThreadId -> Maybe ThreadLabel -> ShouldSample
 
 -- | A thread label, as set by `labelThread`.
+--
+--   @since 0.5.0.0
 type ThreadLabel = String
 
 -- | The result type of a `ThreadFilter`.
+--
+--   @since 0.5.0.0
 data ShouldSample
   = -- | The thread should be sampled.
     Yes
@@ -208,6 +234,8 @@ data ShouldSample
 --   If the thread label matches the given pattern, the thread filter returns `Yes`.
 --   Otherwise, the thread filter returns `No`.
 --   The thread filter never returns `Never`.
+--
+--   @since 0.5.0.0
 sampleInclude ::
   -- | The include pattern.
   Glob ->
@@ -222,6 +250,8 @@ sampleInclude globInclude =
 --   If the thread label matches the given pattern, the thread filter returns `No`.
 --   Otherwise, the thread filter returns `Yes`.
 --   The thread filter never returns `Never`.
+--
+--   @since 0.5.0.0
 sampleExclude ::
   -- | The exclude pattern.
   Glob ->
@@ -237,6 +267,8 @@ sampleExclude globExclude =
 --   the given exclude pattern, the thread filter returns `Yes`.
 --   Otherwise, the thread filter returns `No`.
 --   The thread filter never returns `Never`.
+--
+--   @since 0.5.0.0
 sampleIncludeExclude ::
   -- | The include pattern.
   Glob ->
@@ -274,7 +306,10 @@ fromBool b = if b then Yes else No
 --     If set to any numeric value, `sampleInterval` is set to the `Interval` constructed using the value as milliseconds.
 --     If set to any non-numeric value, a warning is printed to `stderr` and the default `sampleInterval` is used.
 --
---   __Warning:__ The usual caveats around @getenv@ apply.
+--   __Warning:__ This function reads environment variables, which is not thread-safe.
+--                See [@getenv@](https://en.cppreference.com/c/program/getenv).
+--
+--   @since 0.5.0.0
 fromEnv :: IO Options
 fromEnv = do
   wait <- testEnv waitVar
@@ -316,23 +351,23 @@ fromEnv = do
   lookupEnvGlob :: String -> IO (Maybe Glob)
   lookupEnvGlob = fmap (fmap fromString) . lookupEnv
 
-waitVar :: String
-waitVar = "GHC_STACK_PROFILER_WAIT"
+  waitVar :: String
+  waitVar = "GHC_STACK_PROFILER_WAIT"
 
-sampleIncludeVar :: String
-sampleIncludeVar = "GHC_STACK_PROFILER_SAMPLE_INCLUDE"
+  sampleIncludeVar :: String
+  sampleIncludeVar = "GHC_STACK_PROFILER_SAMPLE_INCLUDE"
 
-sampleExcludeVar :: String
-sampleExcludeVar = "GHC_STACK_PROFILER_SAMPLE_EXCLUDE"
+  sampleExcludeVar :: String
+  sampleExcludeVar = "GHC_STACK_PROFILER_SAMPLE_EXCLUDE"
 
-sampleRtsThreadsVar :: String
-sampleRtsThreadsVar = "GHC_STACK_PROFILER_SAMPLE_RTS_THREADS"
+  sampleRtsThreadsVar :: String
+  sampleRtsThreadsVar = "GHC_STACK_PROFILER_SAMPLE_RTS_THREADS"
 
-sampleProfilerThreadsVar :: String
-sampleProfilerThreadsVar = "GHC_STACK_PROFILER_SAMPLE_PROFILER_THREADS"
+  sampleProfilerThreadsVar :: String
+  sampleProfilerThreadsVar = "GHC_STACK_PROFILER_SAMPLE_PROFILER_THREADS"
 
-sampleIntervalVar :: String
-sampleIntervalVar = "GHC_STACK_PROFILER_SAMPLE_INTERVAL"
+  sampleIntervalVar :: String
+  sampleIntervalVar = "GHC_STACK_PROFILER_SAMPLE_INTERVAL"
 
 -------------------------------------------------------------------------------
 -- Low-level API
@@ -352,6 +387,11 @@ sampleIntervalVar = "GHC_STACK_PROFILER_SAMPLE_INTERVAL"
 --
 --   __Warning:__ This function spawns a `Manager` thread.
 --   Having multiple concurrent `Manager` threads is unsupported and unsafe.
+--
+--   __Warning:__ If the action stops the `Manager` using `stopManager`,
+--   this function deadlocks on exit.
+--
+--   @since 0.5.0.0
 withManager ::
   -- | Flag that determines if sampler threads should wait.
   Bool ->
@@ -368,10 +408,12 @@ withManager wait action =
 --   If you are using @ghc-stack-profiler@ with @eventlog-socket@'s control
 --   commands, this should be set to @True@. Otherwise, this should be @False@.
 --
---   __Warning:__ The manager must be stopped with `stopManager`.
---
 --   __Warning:__ This function spawns a `Manager` thread.
 --   Having multiple concurrent `Manager` threads is unsupported and unsafe.
+--
+--   __Warning:__ The manager should be stopped with `stopManager`.
+--
+--   @since 0.5.0.0
 startManager :: Bool -> IO Manager
 startManager wait = do
   -- TODO: Detect if the event loop thread is running and throw an error.
@@ -384,11 +426,13 @@ startManager wait = do
 -- Sampler
 -------------------------------------------------------------------------------
 
--- | Run an action with a `Sampler` for the _current thread_.
+-- | Run an action with a `Sampler` for the current thread.
 --
 --   The `Sampler` is stopped when the action finishes.
 --
---   __Warning:__ If the action creates a new thread, it _will not_ be sampled.
+--   __Warning:__ If the action creates a new thread, it /will not/ be sampled.
+--
+--   @since 0.5.0.0
 withSamplerForMe :: Manager -> Interval -> IO a -> IO a
 withSamplerForMe manager interval action = do
   myThreadId >>= \threadId ->
@@ -396,7 +440,9 @@ withSamplerForMe manager interval action = do
 
 -- | Start a sampler for the given `ThreadId`.
 --
---   __Warning:__ The sampler must be stopped using `stopSampler`.
+--   __Warning:__ The sampler should be stopped using `stopSampler` or `stopManager`.
+--
+--   @since 0.5.0.0
 startSamplerFor :: Manager -> ThreadId -> Interval -> IO Sampler
 startSamplerFor manager threadId interval =
   startSampler (samplerFor manager threadId interval)
@@ -415,7 +461,9 @@ samplerFor samplerManager threadId sampleInterval =
 --   This function ignores the `wait` field and uses the value that was
 --   passed to the `Manager` on creation.
 --
---   __Warning:__ The sampler must be stopped using `stopSampler`.
+--   __Warning:__ The sampler should be stopped using `stopSampler` or `stopManager`.
+--
+--   @since 0.5.0.0
 startSamplerWith :: Manager -> Options -> IO Sampler
 startSamplerWith manager options = do
   neverSetRef <- newIORef Set.empty

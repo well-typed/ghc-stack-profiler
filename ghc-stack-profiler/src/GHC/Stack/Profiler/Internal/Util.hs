@@ -32,9 +32,9 @@ castPtrToWord64 ptr = case ptrToWordPtr ptr of
 --
 --   Use `fromString` to construct glob patterns from strings.
 --
---   A "*" matches any string, including the empty string.
+--   A @*@ matches any string, including the empty string.
 --
---   One can remove the special meaning of "*" by preceding it with a backslash.
+--   One can remove the special meaning of @*@ by preceding it with a backslash.
 newtype Glob = Glob [GlobPart]
 
 data GlobPart = Wildcard | Literal String

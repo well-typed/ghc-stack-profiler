@@ -52,9 +52,11 @@ import GHC.Generics (Generic)
 import qualified GHC.Stack.Profiler.Internal.Decode as Decode
 import GHC.Stack.Profiler.Internal.SymbolTable
 
--- NOTE: Part of the public API.
+-- NOTE: The `Manager` type (but not its implementation) is part of the public API.
 
 -- | A `Manager` handle, which can be used to stop the manager with `stopManager`.
+--
+--   @since 0.5.0.0
 data Manager = MkManager
   { samplerThreadMapVar :: !(TVar (Map ThreadId Sampler))
   -- ^ 'Async' of the stack sampling thread.
@@ -98,11 +100,13 @@ newManager wait = do
       , messageChan
       }
 
--- NOTE: Part of the public API.
+-- NOTE: `stopManager` is part of the public API.
 
 -- | Stop a `Manager`.
 --
 --   This also stops every `Sampler` started by this manager.
+--
+--   __Warning:__ If called with a stopped `Manager`, this function deadlocks.
 stopManager :: Manager -> IO ()
 stopManager manager = do
   stopAllSamplerThreads manager
@@ -161,6 +165,11 @@ stopAllSamplerThreads manager = do
 -- Sampler Threads
 -------------------------------------------------------------------------------
 
+-- NOTE: The `Sampler` type (but not its implementation) is part of the public API.
+
+-- | A `Sampler` handle, which can be used to stop the sampler with `GHC.Stack.Profiler.stopSampler`.
+--
+--   @since 0.5.0.0
 newtype Sampler = MkSampler
   { samplerAsync :: Async ()
   }
