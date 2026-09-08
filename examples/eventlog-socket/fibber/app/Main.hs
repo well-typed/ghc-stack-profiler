@@ -3,14 +3,14 @@ module Main where
 
 import Data.Foldable (traverse_)
 import Debug.Trace (flushEventLog, traceMarkerIO)
-import GHC.Eventlog.Socket
+import GHC.Eventlog.Socket (startFromEnv)
 import GHC.Stack.Annotation
 import GHC.Stack.Profiler
 import System.Environment (getArgs)
 
 main :: IO ()
 main =
-  withProfilerWith defaultOptions{shouldStart = False} $ do
+  withProfilerWith defaultOptions{wait = True} $ do
     startFromEnv
 
     -- Actual work is performed here

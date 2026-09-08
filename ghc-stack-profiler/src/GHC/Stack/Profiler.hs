@@ -5,13 +5,15 @@ module GHC.Stack.Profiler (
   Profiler (..),
   withProfiler,
   withProfilerWith,
+  withProfilerFromEnv,
   startProfiler,
   startProfilerWith,
+  startProfilerFromEnv,
   stopProfiler,
 
   -- ** Options
   Options (
-    shouldStart,
+    wait,
     shouldSample,
     sampleRtsThreads,
     sampleProfilerThreads,
@@ -26,8 +28,12 @@ module GHC.Stack.Profiler (
   -- *** Glob Patterns
   Glob,
   matches,
-  sampleIfMatches,
-  sampleIfNotMatches,
+  sampleInclude,
+  sampleExclude,
+  sampleIncludeExclude,
+
+  -- *** Environment Variables
+  fromEnv,
 
   -- * Low-Level API
 
@@ -49,6 +55,7 @@ import Control.Concurrent.Async (Async (..))
 import Control.Exception
 import Control.Monad.IO.Class (MonadIO (..))
 import Data.Bifunctor (Bifunctor (..))
+import Data.Functor ((<&>))
 import Data.IORef (IORef, newIORef, readIORef, writeIORef)
 import Data.List (isPrefixOf)
 import qualified Data.Map.Strict as Map
@@ -56,13 +63,19 @@ import Data.Maybe (catMaybes, fromMaybe)
 import Data.Set (Set)
 import qualified Data.Set as S
 import qualified Data.Set as Set
+import Data.String (IsString (..))
 import GHC.Conc
 import GHC.Conc.Sync (threadLabel)
 import GHC.IsList (IsList (..))
 import qualified GHC.Stack.Profiler.Internal.Eventlog.Socket as Eventlog.Socket
 import GHC.Stack.Profiler.Internal.Manager
-import GHC.Stack.Profiler.Internal.Sampler (Interval (MkIntervalMillis), SamplerDescr (..), startSampler, stopSampler, withSampler)
+import GHC.Stack.Profiler.Internal.Sampler (Interval (MkIntervalMillis), SamplerDescr (MkSamplerDescr), startSampler, stopSampler, withSampler)
+import qualified GHC.Stack.Profiler.Internal.Sampler as SamplerDescr
 import GHC.Stack.Profiler.Internal.Util (DList, Glob, WriterT, matches, runWriterT, tell)
+import System.Environment (lookupEnv)
+import System.IO (hPutStrLn, stderr)
+import Text.Printf (printf)
+import Text.Read (readMaybe)
 
 -------------------------------------------------------------------------------
 -- High-level API
@@ -90,6 +103,11 @@ withProfilerWith :: Options -> IO a -> IO a
 withProfilerWith options action =
   bracket (startProfilerWith options) stopProfiler (const action)
 
+-- | Variant of `withProfiler` that reads `Options` from the environment.
+withProfilerFromEnv :: IO a -> IO a
+withProfilerFromEnv action =
+  bracket startProfilerFromEnv stopProfiler (const action)
+
 -- | Start a `Profiler` with the default `Options`.
 --
 --   This function returns a `Profiler` handle, which can be used to stop
@@ -104,9 +122,14 @@ startProfiler =
 -- | Variant of `startProfiler` that accepts `Options`.
 startProfilerWith :: Options -> IO Profiler
 startProfilerWith options = do
-  profilerManager <- startManager (shouldStart options)
+  profilerManager <- startManager (wait options)
   profilerSampler <- startSamplerWith profilerManager options
   pure MkProfiler{profilerManager, profilerSampler}
+
+-- | Variant of `startProfiler` that accepts `Options`.
+startProfilerFromEnv :: IO Profiler
+startProfilerFromEnv =
+  startProfilerWith =<< fromEnv
 
 -- | Stop a `Profiler`.
 stopProfiler :: Profiler -> IO ()
@@ -121,12 +144,12 @@ stopProfiler MkProfiler{profilerManager, profilerSampler} = do
 --
 --   To construct options, modify `defaultOptions` using the fields:
 --
---   [@`GHC.Stack.Profiler.shouldStart` :: `Bool`@]:
+--   [@`GHC.Stack.Profiler.wait` :: `Bool`@]:
 --     Determines if sampler threads are started on creation or wait for a
 --     "start profiling" command on the eventlog socket. If you are using
 --     @ghc-stack-profiler@ with @eventlog-socket@'s control commands, this
---     should be set to @False@. Otherwise, this should be @True@. The default
---     is @True@.
+--     should be set to @True@. Otherwise, this should be @False@. The default
+--     is @False@.
 --   [@`GHC.Stack.Profiler.shouldSample` :: `ThreadId` -> `Maybe` `ThreadLabel` -> `ShouldSample`@]:
 --     Determines if the thread idenfied by the `ThreadId` should be sampled.
 --     The current `ThreadLabel`, returned by `threadLabel`, is passed as the
@@ -145,7 +168,7 @@ stopProfiler MkProfiler{profilerManager, profilerSampler} = do
 --     Determines the sampling interval.
 --     The default is @10@ milliseconds.
 data Options = MkOptions
-  { shouldStart :: !Bool
+  { wait :: !Bool
   , shouldSample :: ThreadFilter
   , sampleRtsThreads :: !Bool
   , sampleProfilerThreads :: !Bool
@@ -156,7 +179,7 @@ data Options = MkOptions
 defaultOptions :: Options
 defaultOptions =
   MkOptions
-    { shouldStart = True
+    { wait = False
     , shouldSample = \_threadId _maybeThreadLabel -> Yes
     , sampleRtsThreads = False
     , sampleProfilerThreads = False
@@ -180,23 +203,50 @@ data ShouldSample
   | -- | The thread should never be sampled.
     Never
 
--- | Construct a thread filter from a `Glob` pattern.
+-- | Construct a thread filter from an include `Glob` pattern.
 --
 --   If the thread label matches the given pattern, the thread filter returns `Yes`.
 --   Otherwise, the thread filter returns `No`.
 --   The thread filter never returns `Never`.
-sampleIfMatches :: Glob -> ThreadFilter
-sampleIfMatches glob =
-  const $ maybe No $ fromBool . (glob `matches`)
+sampleInclude ::
+  -- | The include pattern.
+  Glob ->
+  ThreadFilter
+sampleInclude globInclude =
+  const . maybe No $
+    fromBool . \label ->
+      globInclude `matches` label
 
--- | Construct a thread filter from a `Glob` pattern.
+-- | Construct a thread filter from an exclude `Glob` pattern.
 --
 --   If the thread label matches the given pattern, the thread filter returns `No`.
 --   Otherwise, the thread filter returns `Yes`.
 --   The thread filter never returns `Never`.
-sampleIfNotMatches :: Glob -> ThreadFilter
-sampleIfNotMatches glob =
-  const $ maybe Yes $ fromBool . not . (glob `matches`)
+sampleExclude ::
+  -- | The exclude pattern.
+  Glob ->
+  ThreadFilter
+sampleExclude globExclude =
+  const . maybe Yes $
+    fromBool . \label ->
+      not (globExclude `matches` label)
+
+-- | Construct a thread filter from include and exclude `Glob` patterns.
+--
+--   If the thread label matches the given include pattern and does not match
+--   the given exclude pattern, the thread filter returns `Yes`.
+--   Otherwise, the thread filter returns `No`.
+--   The thread filter never returns `Never`.
+sampleIncludeExclude ::
+  -- | The include pattern.
+  Glob ->
+  -- | The exclude pattern.
+  Glob ->
+  ThreadFilter
+sampleIncludeExclude globInclude globExclude =
+  const . maybe Yes $
+    fromBool . \label ->
+      globInclude `matches` label && not (globExclude `matches` label)
 
 -- | Internal helper.
 --
@@ -205,6 +255,84 @@ sampleIfNotMatches glob =
 --   Maps `True` to `Yes` and `False` to `No`.
 fromBool :: Bool -> ShouldSample
 fromBool b = if b then Yes else No
+
+-- | Read the `Options` from the environment.
+--
+--   [@GHC_STACK_PROFILER_WAIT@]:
+--     If set to any non-empty value, `wait` is set to `True`.
+--   [@GHC_STACK_PROFILER_SAMPLE_INCLUDE@]:
+--     If set, `shouldSample` is set to the `ThreadFilter` constructed using `sampleInclude` using the value as a `Glob` pattern.
+--     If @GHC_STACK_PROFILER_SAMPLE_EXCLUDE@ is also set, `sampleIncludeExclude` is used.
+--   [@GHC_STACK_PROFILER_SAMPLE_EXCLUDE@]:
+--     If set, `shouldSample` is set to the `ThreadFilter` constructed using `sampleExclude` using the value as a `Glob` pattern.
+--     If @GHC_STACK_PROFILER_SAMPLE_INCLUDE@ is also set, `sampleIncludeExclude` is used.
+--   [@GHC_STACK_PROFILER_SAMPLE_RTS_THREADS@]:
+--     If set to any non-empty value, `sampleRtsThreads` is set to `True`.
+--   [@GHC_STACK_PROFILER_SAMPLE_PROFILER_THREADS@]:
+--     If set to any non-empty value, `sampleProfilerThreads` is set to `True`.
+--   [@GHC_STACK_PROFILER_SAMPLE_INTERVAL@]:
+--     If set to any numeric value, `sampleInterval` is set to the `Interval` constructed using the value as milliseconds.
+--     If set to any non-numeric value, a warning is printed to `stderr` and the default `sampleInterval` is used.
+--
+--   __Warning:__ The usual caveats around @getenv@ apply.
+fromEnv :: IO Options
+fromEnv = do
+  wait <- testEnv waitVar
+  shouldSample <-
+    (,) <$> lookupEnvGlob sampleIncludeVar <*> lookupEnvGlob sampleExcludeVar <&> \case
+      (Nothing, Nothing) -> shouldSample defaultOptions
+      (Just includeGlob, Nothing) -> sampleInclude includeGlob
+      (Nothing, Just excludeGlob) -> sampleExclude excludeGlob
+      (Just includeGlob, Just excludeGlob) -> sampleIncludeExclude includeGlob excludeGlob
+  sampleRtsThreads <- testEnv sampleRtsThreadsVar
+  sampleProfilerThreads <- testEnv sampleProfilerThreadsVar
+  sampleInterval <-
+    lookupEnv sampleIntervalVar >>= \case
+      Nothing ->
+        pure $ sampleInterval defaultOptions
+      Just sampleIntervalMillisString ->
+        case readMaybe sampleIntervalMillisString of
+          Nothing -> do
+            hPutStrLn stderr $
+              printf
+                "Could not parse the value of %s. Expected a number, found %s"
+                sampleIntervalVar
+                sampleIntervalMillisString
+            pure $ sampleInterval defaultOptions
+          Just sampleIntervalMillis ->
+            pure $ MkIntervalMillis sampleIntervalMillis
+  pure
+    MkOptions
+      { wait
+      , shouldSample
+      , sampleRtsThreads
+      , sampleProfilerThreads
+      , sampleInterval
+      }
+ where
+  testEnv :: String -> IO Bool
+  testEnv = fmap (maybe False (not . null)) . lookupEnv
+
+  lookupEnvGlob :: String -> IO (Maybe Glob)
+  lookupEnvGlob = fmap (fmap fromString) . lookupEnv
+
+waitVar :: String
+waitVar = "GHC_STACK_PROFILER_WAIT"
+
+sampleIncludeVar :: String
+sampleIncludeVar = "GHC_STACK_PROFILER_SAMPLE_INCLUDE"
+
+sampleExcludeVar :: String
+sampleExcludeVar = "GHC_STACK_PROFILER_SAMPLE_EXCLUDE"
+
+sampleRtsThreadsVar :: String
+sampleRtsThreadsVar = "GHC_STACK_PROFILER_SAMPLE_RTS_THREADS"
+
+sampleProfilerThreadsVar :: String
+sampleProfilerThreadsVar = "GHC_STACK_PROFILER_SAMPLE_PROFILER_THREADS"
+
+sampleIntervalVar :: String
+sampleIntervalVar = "GHC_STACK_PROFILER_SAMPLE_INTERVAL"
 
 -------------------------------------------------------------------------------
 -- Low-level API
@@ -215,39 +343,39 @@ fromBool b = if b then Yes else No
 
 -- | Run an action with a new `Manager`.
 --
---   The first argument determines if sampler threads are started on creation
---   or wait for a "start profiling" command on the eventlog socket.
+--   The first argument indicates if sampler threads should wait for a "start
+--   profiling" command on the eventlog socket.
 --   If you are using @ghc-stack-profiler@ with @eventlog-socket@'s control
---   commands, this should be set to @False@. Otherwise, this should be @True@.
+--   commands, this should be set to @True@. Otherwise, this should be @False@.
 --
 --   The `Manager` is stopped when the action finishes.
 --
 --   __Warning:__ This function spawns a `Manager` thread.
 --   Having multiple concurrent `Manager` threads is unsupported and unsafe.
 withManager ::
-  -- | Flag that determines if sampler threads are started on creation.
+  -- | Flag that determines if sampler threads should wait.
   Bool ->
   -- | The action that runs with the `Manager`.
   (Manager -> IO a) ->
   IO a
-withManager shouldStart action =
-  bracket (startManager shouldStart) stopManager action
+withManager wait action =
+  bracket (startManager wait) stopManager action
 
 -- | Start a `Manager`.
 --
---   The first argument determines if sampler threads are started on creation
---   or wait for a "start profiling" command on the eventlog socket.
+--   The first argument indicates if sampler threads should wait for a "start
+--   profiling" command on the eventlog socket.
 --   If you are using @ghc-stack-profiler@ with @eventlog-socket@'s control
---   commands, this should be set to @False@. Otherwise, this should be @True@.
+--   commands, this should be set to @True@. Otherwise, this should be @False@.
 --
 --   __Warning:__ The manager must be stopped with `stopManager`.
 --
 --   __Warning:__ This function spawns a `Manager` thread.
 --   Having multiple concurrent `Manager` threads is unsupported and unsafe.
 startManager :: Bool -> IO Manager
-startManager shouldStart = do
+startManager wait = do
   -- TODO: Detect if the event loop thread is running and throw an error.
-  manager <- newManager shouldStart
+  manager <- newManager wait
   startEventLoop manager
   Eventlog.Socket.registerWithEventlogSocket manager
   pure manager
@@ -284,7 +412,7 @@ samplerFor samplerManager threadId sampleInterval =
 
 -- | Start a sampler with the given `Options`.
 --
---   This function ignores the `shouldStart` field and uses the value that was
+--   This function ignores the `wait` field and uses the value that was
 --   passed to the `Manager` on creation.
 --
 --   __Warning:__ The sampler must be stopped using `stopSampler`.
