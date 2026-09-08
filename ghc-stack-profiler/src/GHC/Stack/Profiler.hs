@@ -55,6 +55,7 @@ import Control.Concurrent.Async (Async (..))
 import Control.Exception
 import Control.Monad.IO.Class (MonadIO (..))
 import Data.Bifunctor (Bifunctor (..))
+import Data.Foldable (traverse_)
 import Data.Functor ((<&>))
 import Data.IORef (IORef, newIORef, readIORef, writeIORef)
 import Data.List (isPrefixOf)
@@ -111,10 +112,12 @@ withProfilerWith options action =
 
 -- | Variant of `withProfiler` that reads `Options` from the environment.
 --
+--   If @GHC_STACK_PROFILER@ is unset or empty, no `Profiler` is started.
+--
 --   @since 0.5.0.0
 withProfilerFromEnv :: IO a -> IO a
 withProfilerFromEnv action =
-  bracket startProfilerFromEnv stopProfiler (const action)
+  bracket startProfilerFromEnv (traverse_ stopProfiler) (const action)
 
 -- | Start a `Profiler` with the default `Options`.
 --
@@ -140,10 +143,12 @@ startProfilerWith options = do
 
 -- | Variant of `startProfiler` that accepts `Options`.
 --
+--   If @GHC_STACK_PROFILER@ is unset or empty, no `Profiler` is started.
+--
 --   @since 0.5.0.0
-startProfilerFromEnv :: IO Profiler
+startProfilerFromEnv :: IO (Maybe Profiler)
 startProfilerFromEnv =
-  startProfilerWith =<< fromEnv
+  fromEnv >>= traverse startProfilerWith
 
 -- | Stop a `Profiler`.
 --
@@ -290,6 +295,9 @@ fromBool b = if b then Yes else No
 
 -- | Read the `Options` from the environment.
 --
+--   [@GHC_STACK_PROFILER@]:
+--     If set to any non-empty value, read and return the options.
+--     Otherwise, return `Nothing`, which indicates the `Profiler` should not be started.
 --   [@GHC_STACK_PROFILER_WAIT@]:
 --     If set to any non-empty value, `wait` is set to `True`.
 --   [@GHC_STACK_PROFILER_SAMPLE_INCLUDE@]:
@@ -310,46 +318,54 @@ fromBool b = if b then Yes else No
 --                See [@getenv@](https://en.cppreference.com/c/program/getenv).
 --
 --   @since 0.5.0.0
-fromEnv :: IO Options
+fromEnv :: IO (Maybe Options)
 fromEnv = do
-  wait <- testEnv waitVar
-  shouldSample <-
-    (,) <$> lookupEnvGlob sampleIncludeVar <*> lookupEnvGlob sampleExcludeVar <&> \case
-      (Nothing, Nothing) -> shouldSample defaultOptions
-      (Just includeGlob, Nothing) -> sampleInclude includeGlob
-      (Nothing, Just excludeGlob) -> sampleExclude excludeGlob
-      (Just includeGlob, Just excludeGlob) -> sampleIncludeExclude includeGlob excludeGlob
-  sampleRtsThreads <- testEnv sampleRtsThreadsVar
-  sampleProfilerThreads <- testEnv sampleProfilerThreadsVar
-  sampleInterval <-
-    lookupEnv sampleIntervalVar >>= \case
-      Nothing ->
-        pure $ sampleInterval defaultOptions
-      Just sampleIntervalMillisString ->
-        case readMaybe sampleIntervalMillisString of
-          Nothing -> do
-            hPutStrLn stderr $
-              printf
-                "Could not parse the value of %s. Expected a number, found %s"
-                sampleIntervalVar
-                sampleIntervalMillisString
+  shouldStart <- testEnv startVar
+  if not shouldStart
+    then pure Nothing
+    else do
+      wait <- testEnv waitVar
+      shouldSample <-
+        (,) <$> lookupEnvGlob sampleIncludeVar <*> lookupEnvGlob sampleExcludeVar <&> \case
+          (Nothing, Nothing) -> shouldSample defaultOptions
+          (Just includeGlob, Nothing) -> sampleInclude includeGlob
+          (Nothing, Just excludeGlob) -> sampleExclude excludeGlob
+          (Just includeGlob, Just excludeGlob) -> sampleIncludeExclude includeGlob excludeGlob
+      sampleRtsThreads <- testEnv sampleRtsThreadsVar
+      sampleProfilerThreads <- testEnv sampleProfilerThreadsVar
+      sampleInterval <-
+        lookupEnv sampleIntervalVar >>= \case
+          Nothing ->
             pure $ sampleInterval defaultOptions
-          Just sampleIntervalMillis ->
-            pure $ MkIntervalMillis sampleIntervalMillis
-  pure
-    MkOptions
-      { wait
-      , shouldSample
-      , sampleRtsThreads
-      , sampleProfilerThreads
-      , sampleInterval
-      }
+          Just sampleIntervalMillisString ->
+            case readMaybe sampleIntervalMillisString of
+              Nothing -> do
+                hPutStrLn stderr $
+                  printf
+                    "Could not parse the value of %s. Expected a number, found %s"
+                    sampleIntervalVar
+                    sampleIntervalMillisString
+                pure $ sampleInterval defaultOptions
+              Just sampleIntervalMillis ->
+                pure $ MkIntervalMillis sampleIntervalMillis
+      pure $
+        Just
+          MkOptions
+            { wait
+            , shouldSample
+            , sampleRtsThreads
+            , sampleProfilerThreads
+            , sampleInterval
+            }
  where
   testEnv :: String -> IO Bool
   testEnv = fmap (maybe False (not . null)) . lookupEnv
 
   lookupEnvGlob :: String -> IO (Maybe Glob)
   lookupEnvGlob = fmap (fmap fromString) . lookupEnv
+
+  startVar :: String
+  startVar = "GHC_STACK_PROFILER"
 
   waitVar :: String
   waitVar = "GHC_STACK_PROFILER_WAIT"
