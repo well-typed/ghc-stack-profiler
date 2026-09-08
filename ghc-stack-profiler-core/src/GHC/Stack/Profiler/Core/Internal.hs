@@ -1,3 +1,5 @@
+{-# OPTIONS_HADDOCK hide #-}
+
 module GHC.Stack.Profiler.Core.Internal (
   CallStackFrameTag (..),
   MessageTag (..),
