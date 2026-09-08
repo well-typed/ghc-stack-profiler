@@ -80,15 +80,23 @@ data Manager = MkManager
   deriving (Generic, Eq)
 
 newManager :: Bool -> IO Manager
-newManager running = do
+newManager wait = do
   tracingEnabled <- Compat.userTracingEnabledIO
-  MkManager
-    <$> newTVarIO Map.empty
-    <*> newTVarIO Nothing
-    <*> emptySymbolTableIO
-    <*> newTVarIO running
-    <*> newTVarIO tracingEnabled
-    <*> newChan
+  samplerThreadMapVar <- newTVarIO Map.empty
+  eventLoopThreadVar <- newTVarIO Nothing
+  symbolTableRef <- emptySymbolTableIO
+  shouldSampleVar <- newTVarIO (not wait)
+  eventLoggingStartedVar <- newTVarIO tracingEnabled
+  messageChan <- newChan
+  pure
+    MkManager
+      { samplerThreadMapVar
+      , eventLoopThreadVar
+      , symbolTableRef
+      , shouldSampleVar
+      , eventLoggingStartedVar
+      , messageChan
+      }
 
 -- NOTE: Part of the public API.
 
