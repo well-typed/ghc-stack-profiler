@@ -2,8 +2,11 @@
 
 module Main where
 
-import GHC.Stack.Profiler (Glob)
+import Control.Concurrent (myThreadId)
+import Data.Maybe (isNothing)
+import GHC.Stack.Profiler (Glob, startManager, startSamplerFor, stopManager, stopSampler, withManager)
 import qualified GHC.Stack.Profiler as Glob (matches)
+import System.Timeout (timeout)
 import Test.Tasty
 import Test.Tasty.HUnit
 
@@ -11,11 +14,41 @@ main :: IO ()
 main =
   defaultMain $
     testGroup "Tests" $
-      [ testGroup "Glob" $
+      [ testGroup "Profiler" $
+          [ bug_stopManagerTwice
+          , test_stopSamplerTwice
+          ]
+      , testGroup "Glob" $
           [ runGlobTest globTest
           | globTest <- globTests
           ]
       ]
+
+-------------------------------------------------------------------------------
+-- Manager
+-------------------------------------------------------------------------------
+
+bug_stopManagerTwice :: TestTree
+bug_stopManagerTwice = do
+  testCase "stopManager twice deadlocks" $ do
+    manager <- startManager False
+    stopManager manager
+    timedOut <-
+      fmap isNothing . timeout 5_000_000 $ do
+        stopManager manager
+    assertBool "Test did not time out" timedOut
+
+test_stopSamplerTwice :: TestTree
+test_stopSamplerTwice = do
+  testCase "stopSampler twice" $
+    withManager False $ \manager -> do
+      threadId <- myThreadId
+      sampler <- startSamplerFor manager threadId 10
+      stopSampler manager sampler
+      timedOut <-
+        fmap isNothing . timeout 5_000_000 $ do
+          stopSampler manager sampler
+      assertBool "Test timed out" (not timedOut)
 
 -------------------------------------------------------------------------------
 -- Glob
