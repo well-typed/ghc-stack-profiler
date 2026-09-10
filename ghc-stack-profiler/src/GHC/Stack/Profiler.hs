@@ -43,6 +43,10 @@ module GHC.Stack.Profiler (
   startManager,
   stopManager,
 
+  -- ** Commands
+  startProfiling,
+  stopProfiling,
+
   -- ** Samplers
   Sampler,
   withSamplerForMe,
@@ -394,10 +398,10 @@ fromEnv = do
 
 -- | Run an action with a new `Manager`.
 --
---   The first argument indicates if sampler threads should wait for a "start
---   profiling" command on the eventlog socket.
+--   The first argument indicates if sampler threads should wait for a call to
+--  `startProfiling` or a "start profiling" command on the eventlog socket.
 --   If you are using @ghc-stack-profiler@ with @eventlog-socket@'s control
---   commands, this should be set to @True@. Otherwise, this should be @False@.
+--   commands, this should be set to @True@.
 --
 --   The `Manager` is stopped when the action finishes.
 --
@@ -416,10 +420,10 @@ withManager wait action =
 
 -- | Start a `Manager`.
 --
---   The first argument indicates if sampler threads should wait for a "start
---   profiling" command on the eventlog socket.
+--   The first argument indicates if sampler threads should wait for a call to
+--  `startProfiling` or a "start profiling" command on the eventlog socket.
 --   If you are using @ghc-stack-profiler@ with @eventlog-socket@'s control
---   commands, this should be set to @True@. Otherwise, this should be @False@.
+--   commands, this should be set to @True@.
 --
 --   __Warning:__ This function spawns a `Manager` thread.
 --   Having multiple concurrent `Manager` threads is unsupported and unsafe.
