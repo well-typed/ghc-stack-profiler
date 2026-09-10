@@ -254,30 +254,35 @@ stopEventLoop manager = do
 -- Events
 -------------------------------------------------------------------------------
 
--- | Start the profiler threads.
+-- NOTE: The `startProfiling` function is part of the public API.
+
+-- | Start all `Sampler` threads.
 --
--- Blocks until all threads started running.
+--   This blocks until all `Sampler` threads have started.
+--
+--   __Warning:__ This function deadlocks when used with a stopped `Manager`.
 startProfiling :: Manager -> IO ()
 startProfiling manager = do
-  -- TODO: this atomically is redundant, the main loop thread
-  -- sets it anyway
-  atomically $
-    writeTVar (shouldSampleVar manager) True
+  -- TODO: This atomically is redundant, the main loop thread sets it anyway.
+  atomically $ writeTVar (shouldSampleVar manager) True
   sendStartProfilingMessage manager
 
--- | Stop the running profiler threads.
+-- NOTE: The `stopProfiling` function is part of the public API.
+
+-- | Start all `Sampler` threads.
 --
--- Blocks until all threads stopped running.
+--   This blocks until all `Sampler` threads have stopped.
+--
+--   __Warning:__ This function deadlocks when used with a stopped `Manager`.
 stopProfiling :: Manager -> IO ()
 stopProfiling manager = do
-  -- TODO: this atomically is *not* redundant, it makes sure no new
-  -- samples can be created.
-  -- Otherwise, new samples could be created and queued while we are waiting
-  -- for the event loop to process this message.
-  -- It is important, that once this message is processed, that no sampler thread is sampling
-  -- at all. Otherwise, there will be new init events that are not published.
-  atomically $
-    writeTVar (shouldSampleVar manager) False
+  -- TODO: This atomically is *not* redundant. It makes sure no new samples
+  -- can be created. Otherwise, new samples could be created and queued while
+  -- we are waiting for the event loop to process this message. It is
+  -- important that, once this message is processed, no sampler thread is
+  -- sampling at all. Otherwise, there will be new init events that are not
+  -- published.
+  atomically $ writeTVar (shouldSampleVar manager) False
   sendStopProfilingMessage manager
 
 -- | Start profiling.
