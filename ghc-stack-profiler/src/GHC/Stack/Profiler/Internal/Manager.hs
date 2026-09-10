@@ -240,7 +240,15 @@ eventHandler manager = do
 stopEventLoop :: Manager -> IO ()
 stopEventLoop manager = do
   maybeEventThread <- atomically $ stateTVar (eventLoopThreadVar manager) (,Nothing)
-  for_ maybeEventThread (cancel . eventLoopAsync)
+  case maybeEventThread of
+    Nothing ->
+      -- Manager is already stopped
+      pure ()
+    Just MkEventLoop{eventLoopAsync} -> do
+      -- Send stopProfilingMessage. This tells the event loop to flush all messages.
+      sendStopProfilingMessage manager
+      -- Stop the event loop thread.
+      cancel eventLoopAsync
 
 -------------------------------------------------------------------------------
 -- Events
