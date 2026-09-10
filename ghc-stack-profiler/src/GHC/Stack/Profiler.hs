@@ -99,25 +99,25 @@ data Profiler = MkProfiler
 --   Having multiple concurrent `Manager` threads is unsupported and unsafe.
 --
 --   @since 0.5.0.0
-withProfiler :: IO a -> IO a
+withProfiler :: (Profiler -> IO a) -> IO a
 withProfiler action =
-  bracket startProfiler stopProfiler (const action)
+  bracket startProfiler stopProfiler action
 
 -- | Variant of `withProfiler` that accepts `Options`.
 --
 --   @since 0.5.0.0
-withProfilerWith :: Options -> IO a -> IO a
+withProfilerWith :: Options -> (Profiler -> IO a) -> IO a
 withProfilerWith options action =
-  bracket (startProfilerWith options) stopProfiler (const action)
+  bracket (startProfilerWith options) stopProfiler action
 
 -- | Variant of `withProfiler` that reads `Options` from the environment.
 --
 --   If @GHC_STACK_PROFILER@ is unset or empty, no `Profiler` is started.
 --
 --   @since 0.5.0.0
-withProfilerFromEnv :: IO a -> IO a
+withProfilerFromEnv :: (Maybe Profiler -> IO a) -> IO a
 withProfilerFromEnv action =
-  bracket startProfilerFromEnv (traverse_ stopProfiler) (const action)
+  bracket startProfilerFromEnv (traverse_ stopProfiler) action
 
 -- | Start a `Profiler` with the default `Options`.
 --
@@ -404,9 +404,6 @@ fromEnv = do
 --   __Warning:__ This function spawns a `Manager` thread.
 --   Having multiple concurrent `Manager` threads is unsupported and unsafe.
 --
---   __Warning:__ If the action stops the `Manager` using `stopManager`,
---   this function deadlocks on exit.
---
 --   @since 0.5.0.0
 withManager ::
   -- | Flag that determines if sampler threads should wait.
@@ -449,10 +446,10 @@ startManager wait = do
 --   __Warning:__ If the action creates a new thread, it /will not/ be sampled.
 --
 --   @since 0.5.0.0
-withSamplerForMe :: Manager -> Interval -> IO a -> IO a
+withSamplerForMe :: Manager -> Interval -> (Sampler -> IO a) -> IO a
 withSamplerForMe manager interval action = do
   myThreadId >>= \threadId ->
-    withSampler (samplerFor manager threadId interval) (const action)
+    withSampler (samplerFor manager threadId interval) action
 
 -- | Start a sampler for the given `ThreadId`.
 --

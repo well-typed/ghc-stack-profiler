@@ -16,7 +16,7 @@ import GHC.Stack.Profiler
 
 main :: IO ()
 main =
-  withProfiler $ do
+  withProfiler $ \_profiler -> do
     startFromEnv
     forever $ do
       jumpyJump0

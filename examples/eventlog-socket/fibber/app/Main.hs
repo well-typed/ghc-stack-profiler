@@ -10,7 +10,7 @@ import System.Environment (getArgs)
 
 main :: IO ()
 main =
-  withProfilerWith defaultOptions{wait = True} $ do
+  withProfilerWith defaultOptions{wait = True} $ \_profiler -> do
     startFromEnv
 
     -- Actual work is performed here

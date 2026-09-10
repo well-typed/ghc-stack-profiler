@@ -13,7 +13,7 @@ import System.Random
 
 main :: IO ()
 main =
-  withProfiler $ do
+  withProfiler $ \_profiler -> do
     -- Register hooks:
     registerHook HookPostStartEventLogging $
       traceMarkerIO "HookPostStartEventLogging fired."
