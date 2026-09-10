@@ -409,8 +409,8 @@ toSpeedscopeProfiles programName samples aggregationMode =
         { unit = Speedscope.Nanoseconds
         , name = programName <> " " <> Text.show sampleId
         , startValue = 0
-        , endValue = length samples
-        , weights = replicate (length samples) 1
+        , endValue = length sampleStack
+        , weights = replicate (length sampleStack) 1
         , samples = sampleStack
         }
 
