@@ -30,13 +30,13 @@ main =
 
 bug_stopManagerTwice :: TestTree
 bug_stopManagerTwice = do
-  testCase "stopManager twice deadlocks" $ do
+  testCase "stopManager twice" $ do
     manager <- startManager False
     stopManager manager
     timedOut <-
       fmap isNothing . timeout 5_000_000 $ do
         stopManager manager
-    assertBool "Test did not time out" timedOut
+    assertBool "Test timed out" (not timedOut)
 
 test_stopSamplerTwice :: TestTree
 test_stopSamplerTwice = do
