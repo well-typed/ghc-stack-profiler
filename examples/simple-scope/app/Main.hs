@@ -7,14 +7,14 @@ import GHC.Stack.Profiler
 main :: IO ()
 main =
   withManager True $ \manager -> do
-    withSamplerForMe manager (MkIntervalMillis 10) $
+    withSamplerForMe manager (MkIntervalMillis 10) $ \_sampler ->
       print $
         annotateStackString "fib 41" $
           fib 41
 
     print $ annotateStackString "fib 42" $ fib 42
 
-    withSamplerForMe manager (MkIntervalMillis 10) $
+    withSamplerForMe manager (MkIntervalMillis 10) $ \_sampler ->
       print $
         annotateStackString "fib 43" $
           fib 43

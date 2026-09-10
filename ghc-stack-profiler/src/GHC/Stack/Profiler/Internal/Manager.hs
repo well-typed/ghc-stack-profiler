@@ -105,8 +105,6 @@ newManager wait = do
 -- | Stop a `Manager`.
 --
 --   This also stops every `Sampler` started by this manager.
---
---   __Warning:__ If called with a stopped `Manager`, this function deadlocks.
 stopManager :: Manager -> IO ()
 stopManager manager = do
   stopAllSamplerThreads manager
