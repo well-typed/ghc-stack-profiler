@@ -46,7 +46,7 @@ in the profiling way. (#15197)
 type StackFrameLocation = (StackSnapshot, WordOffset)
 
 data StackInfoTable = StackInfoTable
-  { infoTableStructPtr :: Ptr InfoProv.StgInfoTable
+  { infoTableStructPtr :: Ptr {-InfoProv.-} StgInfoTable
   , infoTablePtr :: Ptr InfoProv.StgInfoTable
   , infoTable :: StgInfoTable
   }

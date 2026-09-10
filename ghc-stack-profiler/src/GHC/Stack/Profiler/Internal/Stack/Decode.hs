@@ -1,6 +1,6 @@
 {-# LANGUAGE MagicHash #-}
 
-module GHC.Stack.Profiler.Stack.Decode (
+module GHC.Stack.Profiler.Internal.Stack.Decode (
   decodeStackWithIpProvId,
 ) where
 
@@ -17,10 +17,8 @@ import GHC.Stack.CloneStack (StackSnapshot (..))
 
 import GHC.Exts.Heap.InfoTable.Types
 
-import GHC.Stack.Profiler.Core.Eventlog
-import GHC.Stack.Profiler.Core.ThreadSample
-import GHC.Stack.Profiler.Core.Util
-import GHC.Stack.Profiler.Stack.Compat (lookupIpeIdForStackFrame)
+import GHC.Stack.Profiler.Core (IpeId (..), SourceLocation (..), StackItem (..))
+import GHC.Stack.Profiler.Internal.Stack.Compat (lookupIpeIdForStackFrame)
 
 decodeStackWithIpProvId :: StackSnapshot -> IO [StackItem]
 decodeStackWithIpProvId (StackSnapshot stack#) = do
@@ -66,8 +64,8 @@ stackAnnotationToStackItem someStackAnnotation =
       srcLoc <- showStackAnnotationLocation someStackAnnotation
       Just $
         MkSourceLocation
-          { line = intToWord32 $ srcLocStartLine srcLoc
-          , column = intToWord32 $ srcLocStartCol srcLoc
+          { line = fromIntegral $ srcLocStartLine srcLoc
+          , column = fromIntegral $ srcLocStartCol srcLoc
           , fileName = Text.pack $ srcLocFile srcLoc
           }
   in

@@ -1,393 +1,564 @@
 module GHC.Stack.Profiler (
-  -- * Run sample profiler
-  withStackProfiler,
-  withStackProfilerForMyThread,
-  withStackProfilerForThread,
-  withRootStackProfiler,
-  shutdownStackProfilerManager,
+  -- * High-Level API
 
-  -- * Configuration of sample profiler
-  StackProfilerManager (..),
-  ProfilerSamplingInterval (..),
+  -- ** Profiler
+  Profiler (..),
+  withProfiler,
+  withProfilerWith,
+  withProfilerFromEnv,
+  startProfiler,
+  startProfilerWith,
+  startProfilerFromEnv,
+  stopProfiler,
 
-  -- * Basic thread sampler
-  sampleThread,
+  -- ** Options
+  Options (
+    wait,
+    shouldSample,
+    sampleRtsThreads,
+    sampleProfilerThreads,
+    sampleInterval
+  ),
+  defaultOptions,
+  Interval (..),
 
-  -- * Low level helpers for setting up custom sample profilers threads
-  runWithStackProfiler,
-  setupStackProfilerThread,
-  stopStackProfilerThread,
+  -- *** Thread Filters and Glob Patterns
+  ThreadFilter,
+  ThreadLabel,
+  ShouldSample (..),
+  Glob,
+  matches,
+  sampleInclude,
+  sampleExclude,
+  sampleIncludeExclude,
 
-  -- * Thread filtering
-  isProfilerThread,
-  isRtsThread,
+  -- *** Environment Variables
+  fromEnv,
+
+  -- * Low-Level API
+
+  -- ** Manager
+  Manager,
+  withManager,
+  startManager,
+  stopManager,
+
+  -- ** Commands
+  startProfiling,
+  stopProfiling,
+
+  -- ** Samplers
+  Sampler,
+  withSamplerForMe,
+  startSamplerFor,
+  startSamplerWith,
+  stopSampler,
 ) where
 
-import GHC.Conc
-import GHC.Conc.Sync (fromThreadId, threadLabel)
-import GHC.Stack.CloneStack (cloneThreadStack)
-
-import Control.Concurrent
-import Control.Concurrent.Async
-import qualified Control.Concurrent.Chan as Chan
-import qualified Control.Concurrent.STM.TVar as STM
+import Control.Concurrent.Async (Async (..))
 import Control.Exception
-import Control.Monad
-import qualified Control.Monad.STM as STM
-import qualified Data.ByteString.Lazy as LBS
+import Control.Monad.IO.Class (MonadIO (..))
+import Data.Bifunctor (Bifunctor (..))
 import Data.Foldable (traverse_)
-import qualified Data.List as List
+import Data.Functor ((<&>))
+import Data.IORef (IORef, newIORef, readIORef, writeIORef)
+import Data.List (isPrefixOf)
 import qualified Data.Map.Strict as Map
+import Data.Maybe (catMaybes, fromMaybe)
 import Data.Set (Set)
+import qualified Data.Set as S
 import qualified Data.Set as Set
-import qualified Debug.Trace
-import qualified Debug.Trace.Binary.Compat as Compat
+import Data.String (IsString (..))
+import GHC.Conc
+import GHC.Conc.Sync (threadLabel)
+import GHC.IsList (IsList (..))
+import qualified GHC.Stack.Profiler.Internal.Eventlog.Socket as Eventlog.Socket
+import GHC.Stack.Profiler.Internal.Manager
+import GHC.Stack.Profiler.Internal.Sampler (Interval (MkIntervalMillis), SamplerDescr (MkSamplerDescr), startSampler, stopSampler, withSampler)
+import qualified GHC.Stack.Profiler.Internal.Sampler as SamplerDescr
+import GHC.Stack.Profiler.Internal.Util (DList, Glob, WriterT, matches, runWriterT, tell)
+import System.Environment (lookupEnv)
+import System.IO (hPutStrLn, stderr)
+import Text.Printf (printf)
+import Text.Read (readMaybe)
 
-import GHC.Stack.Profiler.Commands (sendStopProfilingMessage)
-import GHC.Stack.Profiler.Core.Eventlog
-import GHC.Stack.Profiler.Core.ThreadSample
-import GHC.Stack.Profiler.Core.Util
-import GHC.Stack.Profiler.Decode
-import qualified GHC.Stack.Profiler.Decode as Decode
-import qualified GHC.Stack.Profiler.Eventlog.Socket as EventlogSocket
-import GHC.Stack.Profiler.Manager
-import GHC.Stack.Profiler.SymbolTable (readSymbolTable)
+-------------------------------------------------------------------------------
+-- High-level API
+-------------------------------------------------------------------------------
 
--- | Sampling intervals for the stack profiler.
-data ProfilerSamplingInterval
-  = -- | Sample every @n@ milliseconds.
-    --
-    -- Recommended value: @'SampleIntervalMs' 10@ or @'SampleIntervalMs' 20@.
-    SampleIntervalMs Int
-  deriving (Show, Eq, Ord)
+-------------------------------------------------------------------------------
+-- Profiler
 
-profilerSamplingIntervalToThreadDelayTime :: ProfilerSamplingInterval -> Int
-profilerSamplingIntervalToThreadDelayTime = \case
-  SampleIntervalMs n -> n * 1000
-
--- ----------------------------------------------------------------------------
--- High-Level user API
--- ----------------------------------------------------------------------------
-
--- | Sample the all non-rts threads every 'ProfilerSamplingInterval' for the duration of
--- the wrapped action.
--- Once the wrapped action terminates, the stack profiling stops.
+-- | A profiler handle, which can be used to stop the profiler with `stopProfiler`.
 --
--- RTS threads such as the 'TimerManager' and 'IOManager' are not sampled as these
--- are usually not interesting for user code.
-withStackProfiler :: StackProfilerManager -> ProfilerSamplingInterval -> IO a -> IO a
-withStackProfiler manager delay act = do
-  runWithStackProfiler
-    manager
-    (allThreadSampler manager delay)
-    (defaultCallStackSerialiser manager)
-    act
+--   @since 0.5.0.0
+data Profiler = MkProfiler
+  { profilerManager :: !Manager
+  , profilerSampler :: !Sampler
+  }
 
--- | Sample the current thread every 'ProfilerSamplingInterval' for the duration of
--- the wrapped action.
--- Once the wrapped action terminates, the stack profiling stops.
-withStackProfilerForMyThread :: StackProfilerManager -> ProfilerSamplingInterval -> IO a -> IO a
-withStackProfilerForMyThread manager delay act = do
-  tid <- myThreadId
-  withStackProfilerForThread manager tid delay act
+-- | Run an action with a `Profiler` and the default `Options`.
+--
+--   __Warning:__ This function spawns a `Manager` thread.
+--   Having multiple concurrent `Manager` threads is unsupported and unsafe.
+--
+--   @since 0.5.0.0
+withProfiler :: (Profiler -> IO a) -> IO a
+withProfiler action =
+  bracket startProfiler stopProfiler action
 
--- | Sample a specific 'ThreadId' every 'ProfilerSamplingInterval' for the duration of
--- the wrapped action.
--- Once the wrapped action terminates, the stack profiling stops.
-withStackProfilerForThread :: StackProfilerManager -> ThreadId -> ProfilerSamplingInterval -> IO a -> IO a
-withStackProfilerForThread manager tid delay act =
-  runWithStackProfiler
-    manager
-    (singleThreadSampler manager delay tid)
-    (defaultCallStackSerialiser manager)
-    act
+-- | Variant of `withProfiler` that accepts `Options`.
+--
+--   @since 0.5.0.0
+withProfilerWith :: Options -> (Profiler -> IO a) -> IO a
+withProfilerWith options action =
+  bracket (startProfilerWith options) stopProfiler action
 
-withRootStackProfiler :: Bool -> (StackProfilerManager -> IO a) -> IO a
-withRootStackProfiler shouldRun act =
-  bracket
-    (runNewStackProfilerManager shouldRun)
-    shutdownStackProfilerManager
-    act
+-- | Variant of `withProfiler` that reads `Options` from the environment.
+--
+--   If @GHC_STACK_PROFILER@ is unset or empty, no `Profiler` is started.
+--
+--   @since 0.5.0.0
+withProfilerFromEnv :: (Maybe Profiler -> IO a) -> IO a
+withProfilerFromEnv action =
+  bracket startProfilerFromEnv (traverse_ stopProfiler) action
 
--- ----------------------------------------------------------------------------
--- Low-level user API
--- ----------------------------------------------------------------------------
+-- | Start a `Profiler` with the default `Options`.
+--
+--   This function returns a `Profiler` handle, which can be used to stop
+--   the profiler with `stopProfiler`.
+--
+--   __Warning:__ This function spawns a `Manager` thread.
+--   Having multiple concurrent `Manager` threads is unsupported and unsafe.
+--
+--   @since 0.5.0.0
+startProfiler :: IO Profiler
+startProfiler =
+  startProfilerWith defaultOptions
 
-runNewStackProfilerManager :: Bool -> IO StackProfilerManager
-runNewStackProfilerManager shouldRun = do
-  manager <- newStackProfilerManager shouldRun
-  startEventLoopThread manager
-  EventlogSocket.registerWithEventlogSocket manager
+-- | Variant of `startProfiler` that accepts `Options`.
+--
+--   @since 0.5.0.0
+startProfilerWith :: Options -> IO Profiler
+startProfilerWith options = do
+  profilerManager <- startManager (wait options)
+  profilerSampler <- startSamplerWith profilerManager options
+  pure MkProfiler{profilerManager, profilerSampler}
+
+-- | Variant of `startProfiler` that accepts `Options`.
+--
+--   If @GHC_STACK_PROFILER@ is unset or empty, no `Profiler` is started.
+--
+--   @since 0.5.0.0
+startProfilerFromEnv :: IO (Maybe Profiler)
+startProfilerFromEnv =
+  fromEnv >>= traverse startProfilerWith
+
+-- | Stop a `Profiler`.
+--
+--   @since 0.5.0.0
+stopProfiler :: Profiler -> IO ()
+stopProfiler MkProfiler{profilerManager, profilerSampler} = do
+  stopSampler profilerManager profilerSampler
+  stopManager profilerManager
+
+-------------------------------------------------------------------------------
+-- Options
+
+-- | The options for `withProfilerWith` and `startProfilerWith`.
+--
+--   To construct options, modify `defaultOptions` using the fields:
+--
+--   [@`GHC.Stack.Profiler.wait` :: `Bool`@]:
+--     Determines if sampler threads are started on creation or wait for a
+--     "start profiling" command on the eventlog socket. If you are using
+--     @ghc-stack-profiler@ with @eventlog-socket@'s control commands, this
+--     should be set to @True@. Otherwise, this should be @False@. The default
+--     is @False@.
+--   [@`GHC.Stack.Profiler.shouldSample` :: `ThreadId` -> `Maybe` `ThreadLabel` -> `ShouldSample`@]:
+--     Determines if the thread idenfied by the `ThreadId` should be sampled.
+--     The current `ThreadLabel`, returned by `threadLabel`, is passed as the
+--     second argument. If this function returns `Never`, the thread will never
+--     be sampled, even if its `ThreadLabel` changes. The default predicate
+--     always returns `Yes`. This function is not used for RTS threads or
+--     threads spawned by @ghc-stack-profiler@.
+--   [@`GHC.Stack.Profiler.sampleRtsThreads` :: `Bool`@]:
+--     Determines if builtin RTS threads should be sampled. The builtin RTS
+--     threads are the TimerManager and IOManager threads, and do not usually
+--     have an interesting call-stack profile. The default is @False@.
+--   [@`GHC.Stack.Profiler.sampleProfilerThreads` :: `Bool`@]:
+--     Determines if the threads spawned by @ghc-stack-profiler@ should be
+--     sampled. The default is @False@.
+--   [@`GHC.Stack.Profiler.sampleInterval` :: `Interval`@]:
+--     Determines the sampling interval.
+--     The default is @10@ milliseconds.
+--
+--   @since 0.5.0.0
+data Options = MkOptions
+  { wait :: !Bool
+  , shouldSample :: ThreadFilter
+  , sampleRtsThreads :: !Bool
+  , sampleProfilerThreads :: !Bool
+  , sampleInterval :: !Interval
+  }
+
+-- | The default `Options`. See `Options` for the default values.
+--
+--   @since 0.5.0.0
+defaultOptions :: Options
+defaultOptions =
+  MkOptions
+    { wait = False
+    , shouldSample = \_threadId _maybeThreadLabel -> Yes
+    , sampleRtsThreads = False
+    , sampleProfilerThreads = False
+    , sampleInterval = MkIntervalMillis 10
+    }
+
+-- | A thread filter, used to determine which threads should be sampled.
+--
+--   Used in the `shouldSample` field of `Options`.
+--
+--   @since 0.5.0.0
+type ThreadFilter = ThreadId -> Maybe ThreadLabel -> ShouldSample
+
+-- | A thread label, as set by `labelThread`.
+--
+--   @since 0.5.0.0
+type ThreadLabel = String
+
+-- | The result type of a `ThreadFilter`.
+--
+--   @since 0.5.0.0
+data ShouldSample
+  = -- | The thread should be sampled.
+    Yes
+  | -- | The thread should not be sampled.
+    No
+  | -- | The thread should never be sampled.
+    Never
+
+-- | Construct a thread filter from an include `Glob` pattern.
+--
+--   If the thread label matches the given pattern, the thread filter returns `Yes`.
+--   Otherwise, the thread filter returns `No`.
+--   The thread filter never returns `Never`.
+--
+--   @since 0.5.0.0
+sampleInclude ::
+  -- | The include pattern.
+  Glob ->
+  ThreadFilter
+sampleInclude globInclude =
+  const . maybe No $
+    fromBool . \label ->
+      globInclude `matches` label
+
+-- | Construct a thread filter from an exclude `Glob` pattern.
+--
+--   If the thread label matches the given pattern, the thread filter returns `No`.
+--   Otherwise, the thread filter returns `Yes`.
+--   The thread filter never returns `Never`.
+--
+--   @since 0.5.0.0
+sampleExclude ::
+  -- | The exclude pattern.
+  Glob ->
+  ThreadFilter
+sampleExclude globExclude =
+  const . maybe Yes $
+    fromBool . \label ->
+      not (globExclude `matches` label)
+
+-- | Construct a thread filter from include and exclude `Glob` patterns.
+--
+--   If the thread label matches the given include pattern and does not match
+--   the given exclude pattern, the thread filter returns `Yes`.
+--   Otherwise, the thread filter returns `No`.
+--   The thread filter never returns `Never`.
+--
+--   @since 0.5.0.0
+sampleIncludeExclude ::
+  -- | The include pattern.
+  Glob ->
+  -- | The exclude pattern.
+  Glob ->
+  ThreadFilter
+sampleIncludeExclude globInclude globExclude =
+  const . maybe Yes $
+    fromBool . \label ->
+      globInclude `matches` label && not (globExclude `matches` label)
+
+-- | Internal helper.
+--
+--   Construct a `ShouldSample` from a `Bool`.
+--
+--   Maps `True` to `Yes` and `False` to `No`.
+fromBool :: Bool -> ShouldSample
+fromBool b = if b then Yes else No
+
+-- | Read the `Options` from the environment.
+--
+--   [@GHC_STACK_PROFILER@]:
+--     If set to any non-empty value, read and return the options.
+--     Otherwise, return `Nothing`, which indicates the `Profiler` should not be started.
+--   [@GHC_STACK_PROFILER_WAIT@]:
+--     If set to any non-empty value, `wait` is set to `True`.
+--   [@GHC_STACK_PROFILER_SAMPLE_INCLUDE@]:
+--     If set, `shouldSample` is set to the `ThreadFilter` constructed using `sampleInclude` using the value as a `Glob` pattern.
+--     If @GHC_STACK_PROFILER_SAMPLE_EXCLUDE@ is also set, `sampleIncludeExclude` is used.
+--   [@GHC_STACK_PROFILER_SAMPLE_EXCLUDE@]:
+--     If set, `shouldSample` is set to the `ThreadFilter` constructed using `sampleExclude` using the value as a `Glob` pattern.
+--     If @GHC_STACK_PROFILER_SAMPLE_INCLUDE@ is also set, `sampleIncludeExclude` is used.
+--   [@GHC_STACK_PROFILER_SAMPLE_RTS_THREADS@]:
+--     If set to any non-empty value, `sampleRtsThreads` is set to `True`.
+--   [@GHC_STACK_PROFILER_SAMPLE_PROFILER_THREADS@]:
+--     If set to any non-empty value, `sampleProfilerThreads` is set to `True`.
+--   [@GHC_STACK_PROFILER_SAMPLE_INTERVAL@]:
+--     If set to any numeric value, `sampleInterval` is set to the `Interval` constructed using the value as milliseconds.
+--     If set to any non-numeric value, a warning is printed to `stderr` and the default `sampleInterval` is used.
+--
+--   __Warning:__ This function reads environment variables, which is not thread-safe.
+--                See [@getenv@](https://en.cppreference.com/c/program/getenv).
+--
+--   @since 0.5.0.0
+fromEnv :: IO (Maybe Options)
+fromEnv = do
+  shouldStart <- testEnv startVar
+  if not shouldStart
+    then pure Nothing
+    else do
+      wait <- testEnv waitVar
+      shouldSample <-
+        (,) <$> lookupEnvGlob sampleIncludeVar <*> lookupEnvGlob sampleExcludeVar <&> \case
+          (Nothing, Nothing) -> shouldSample defaultOptions
+          (Just includeGlob, Nothing) -> sampleInclude includeGlob
+          (Nothing, Just excludeGlob) -> sampleExclude excludeGlob
+          (Just includeGlob, Just excludeGlob) -> sampleIncludeExclude includeGlob excludeGlob
+      sampleRtsThreads <- testEnv sampleRtsThreadsVar
+      sampleProfilerThreads <- testEnv sampleProfilerThreadsVar
+      sampleInterval <-
+        lookupEnv sampleIntervalVar >>= \case
+          Nothing ->
+            pure $ sampleInterval defaultOptions
+          Just sampleIntervalMillisString ->
+            case readMaybe sampleIntervalMillisString of
+              Nothing -> do
+                hPutStrLn stderr $
+                  printf
+                    "Could not parse the value of %s. Expected a number, found %s"
+                    sampleIntervalVar
+                    sampleIntervalMillisString
+                pure $ sampleInterval defaultOptions
+              Just sampleIntervalMillis ->
+                pure $ MkIntervalMillis sampleIntervalMillis
+      pure $
+        Just
+          MkOptions
+            { wait
+            , shouldSample
+            , sampleRtsThreads
+            , sampleProfilerThreads
+            , sampleInterval
+            }
+ where
+  testEnv :: String -> IO Bool
+  testEnv = fmap (maybe False (not . null)) . lookupEnv
+
+  lookupEnvGlob :: String -> IO (Maybe Glob)
+  lookupEnvGlob = fmap (fmap fromString) . lookupEnv
+
+  startVar :: String
+  startVar = "GHC_STACK_PROFILER"
+
+  waitVar :: String
+  waitVar = "GHC_STACK_PROFILER_WAIT"
+
+  sampleIncludeVar :: String
+  sampleIncludeVar = "GHC_STACK_PROFILER_SAMPLE_INCLUDE"
+
+  sampleExcludeVar :: String
+  sampleExcludeVar = "GHC_STACK_PROFILER_SAMPLE_EXCLUDE"
+
+  sampleRtsThreadsVar :: String
+  sampleRtsThreadsVar = "GHC_STACK_PROFILER_SAMPLE_RTS_THREADS"
+
+  sampleProfilerThreadsVar :: String
+  sampleProfilerThreadsVar = "GHC_STACK_PROFILER_SAMPLE_PROFILER_THREADS"
+
+  sampleIntervalVar :: String
+  sampleIntervalVar = "GHC_STACK_PROFILER_SAMPLE_INTERVAL"
+
+-------------------------------------------------------------------------------
+-- Low-level API
+-------------------------------------------------------------------------------
+
+-------------------------------------------------------------------------------
+-- Manager
+
+-- | Run an action with a new `Manager`.
+--
+--   The first argument indicates if sampler threads should wait for a call to
+--  `startProfiling` or a "start profiling" command on the eventlog socket.
+--   If you are using @ghc-stack-profiler@ with @eventlog-socket@'s control
+--   commands, this should be set to @True@.
+--
+--   The `Manager` is stopped when the action finishes.
+--
+--   __Warning:__ This function spawns a `Manager` thread.
+--   Having multiple concurrent `Manager` threads is unsupported and unsafe.
+--
+--   @since 0.5.0.0
+withManager ::
+  -- | Flag that determines if sampler threads should wait.
+  Bool ->
+  -- | The action that runs with the `Manager`.
+  (Manager -> IO a) ->
+  IO a
+withManager wait action =
+  bracket (startManager wait) stopManager action
+
+-- | Start a `Manager`.
+--
+--   The first argument indicates if sampler threads should wait for a call to
+--  `startProfiling` or a "start profiling" command on the eventlog socket.
+--   If you are using @ghc-stack-profiler@ with @eventlog-socket@'s control
+--   commands, this should be set to @True@.
+--
+--   __Warning:__ This function spawns a `Manager` thread.
+--   Having multiple concurrent `Manager` threads is unsupported and unsafe.
+--
+--   __Warning:__ The manager should be stopped with `stopManager`.
+--
+--   @since 0.5.0.0
+startManager :: Bool -> IO Manager
+startManager wait = do
+  -- TODO: Detect if the event loop thread is running and throw an error.
+  manager <- newManager wait
+  startEventLoop manager
+  Eventlog.Socket.registerWithEventlogSocket manager
   pure manager
 
-shutdownStackProfilerManager :: StackProfilerManager -> IO ()
-shutdownStackProfilerManager manager = do
-  shutdownAllSamplerThreads manager
-  -- TODO: we could also send a stop command instead
-  shutdownEventLoop manager
+-------------------------------------------------------------------------------
+-- Sampler
+-------------------------------------------------------------------------------
 
-runWithStackProfiler :: StackProfilerManager -> ThreadSampler -> CallStackSerialiser -> IO a -> IO a
-runWithStackProfiler manager sampler serializer act = do
-  bracket
-    (setupStackProfilerThread manager sampler serializer)
-    (stopStackProfilerThread manager)
-    (const act)
+-- | Run an action with a `Sampler` for the current thread.
+--
+--   The `Sampler` is stopped when the action finishes.
+--
+--   __Warning:__ If the action creates a new thread, it /will not/ be sampled.
+--
+--   @since 0.5.0.0
+withSamplerForMe :: Manager -> Interval -> (Sampler -> IO a) -> IO a
+withSamplerForMe manager interval action = do
+  myThreadId >>= \threadId ->
+    withSampler (samplerFor manager threadId interval) action
 
-stopStackProfilerThread :: StackProfilerManager -> Async () -> IO ()
-stopStackProfilerThread MkStackProfilerManager{profilerThreads} profilerThread = do
-  cancel profilerThread
-    `finally` atomically
-      ( do
-          STM.modifyTVar'
-            profilerThreads
-            ( \threadMap ->
-                (Map.delete (asyncThreadId profilerThread) threadMap)
-            )
-      )
+-- | Start a sampler for the given `ThreadId`.
+--
+--   __Warning:__ The sampler should be stopped using `stopSampler` or `stopManager`.
+--
+--   @since 0.5.0.0
+startSamplerFor :: Manager -> ThreadId -> Interval -> IO Sampler
+startSamplerFor manager threadId interval =
+  startSampler (samplerFor manager threadId interval)
 
-setupStackProfilerThread ::
-  StackProfilerManager ->
-  ThreadSampler ->
-  CallStackSerialiser ->
-  IO (Async ())
-setupStackProfilerThread manager sampler serialiser = do
-  barrier <- newEmptyMVar
-  workerThread <- async $ do
-    () <- takeMVar barrier
-    sampleThreadId <- myThreadId
-    labelThread sampleThreadId ("Sample Profiler Thread " <> show (fromThreadId sampleThreadId))
-    forever $ do
-      runStackProfilerSample sampler serialiser
-
-  -- Add this thread to the list of known worker threads to make sure it isn't accidentally sampled
-  addSamplerThread manager workerThread
-  putMVar barrier ()
-  pure workerThread
-
--- ----------------------------------------------------------------------------
--- Sample the RTS CallStack of one or more threads
--- ----------------------------------------------------------------------------
-
-data ThreadSampler = MkThreadSampler
-  { listThreadsToSample :: IO [ThreadId]
-  , delaySamplerThread :: IO ()
-  , waitForProfilingStart :: IO ()
-  }
-
-defaultThreadSampler :: StackProfilerManager -> ProfilerSamplingInterval -> ThreadSampler
-defaultThreadSampler manager delay =
-  MkThreadSampler
-    { listThreadsToSample = do
-        pure []
-    , delaySamplerThread =
-        threadDelay (profilerSamplingIntervalToThreadDelayTime delay)
-    , waitForProfilingStart =
-        atomically $ do
-          STM.check =<< shouldProfile manager
-    }
-
-singleThreadSampler :: StackProfilerManager -> ProfilerSamplingInterval -> ThreadId -> ThreadSampler
-singleThreadSampler manager delay tid =
-  (defaultThreadSampler manager delay)
-    { listThreadsToSample = do
-        pure [tid]
-    }
-
-allThreadSampler :: StackProfilerManager -> ProfilerSamplingInterval -> ThreadSampler
-allThreadSampler manager delay =
-  (defaultThreadSampler manager delay)
-    { listThreadsToSample = do
-        tids <- listThreads
-        userThreads <- filterM (isThreadOfInterest manager) tids
-        pure userThreads
-    }
-
-runStackProfilerSample :: ThreadSampler -> CallStackSerialiser -> IO ()
-runStackProfilerSample sampler serialiser = do
-  waitForProfilingStart sampler
-  tids <- listThreadsToSample sampler
-  mapM_ (runCallStackSerialiser serialiser) tids
-  -- TODO: this is wrong, we don't sample every delay time as sampling takes time as well
-  delaySamplerThread sampler
-
--- ----------------------------------------------------------------------------
--- Serialise the RTS CallStack for the eventlog
--- ----------------------------------------------------------------------------
-
-data CallStackSerialiser = MkCallStackSerialiser
-  { sampleCallStack :: ThreadId -> IO (Maybe ThreadSample)
-  , decodeThreadSample :: ThreadSample -> IO CallStackMessage
-  , serialiseCallStackMessage :: CallStackMessage -> IO ()
-  }
-
--- | If the thread's callstack can be sampled, we serialise the sample
--- and write into the eventlog for later processing.
-runCallStackSerialiser :: CallStackSerialiser -> ThreadId -> IO ()
-runCallStackSerialiser serialiser tid = do
-  sampleCallStack serialiser tid >>= \case
-    Nothing -> pure ()
-    Just threadSample -> do
-      callStackSample <- decodeThreadSample serialiser threadSample
-      serialiseCallStackMessage serialiser callStackSample
-
-defaultCallStackSerialiser :: StackProfilerManager -> CallStackSerialiser
-defaultCallStackSerialiser manager =
-  MkCallStackSerialiser
-    { sampleCallStack = sampleThread
-    , decodeThreadSample = threadSampleToCallStackMessage
-    , serialiseCallStackMessage = \callStackSample -> do
-        lbss <- atomically $ do
-          eventlogMessages <- serializeCallStackMessage (symbolTableRef manager) callStackSample
-          let
-            lbss = serializeBinaryEventlogMessages eventlogMessages
-          -- Only write this message if we are still profiling
-          STM.check =<< shouldProfile manager
-          pure lbss
-
-        writeChan (messageChan manager) (WriteProfileSample $ fmap LBS.toStrict lbss)
-    }
-
--- | Sample the stack of the 'ThreadId' if the thread is currently running.
--- If the thread is not running (e.g., because it is dead), then we return 'Nothing'.
-sampleThread :: ThreadId -> IO (Maybe ThreadSample)
-sampleThread tid = do
-  tidStatus <- threadStatus tid
-  (cap, _lockedToCap) <- threadCapability tid
-  case canCloneStack tidStatus of
-    True -> do
-      stack <- cloneThreadStack tid
-      pure $
-        Just $
-          ThreadSample
-            { threadSampleId = tid
-            , threadSampleCapability = MkCapabilityId $ intToWord64 cap
-            , threadSampleStackSnapshot = stack
-            }
-    False -> do
-      -- Only running threads need to be sampled
-      pure Nothing
+-- | Internal helper.
+--
+--   Create a `SamplerDescr` that samples a single thread.
+samplerFor :: Manager -> ThreadId -> Interval -> SamplerDescr
+samplerFor samplerManager threadId sampleInterval =
+  MkSamplerDescr{samplerManager, samplerThreads, sampleInterval}
  where
-  canCloneStack :: ThreadStatus -> Bool
-  canCloneStack = \case
-    ThreadRunning -> True
-    ThreadBlocked BlockedOnMVar -> True
-    _ -> False
+  samplerThreads = pure [threadId]
 
--- ----------------------------------------------------------------------------
--- Main Event Loop handler
--- ----------------------------------------------------------------------------
+-- | Start a sampler with the given `Options`.
+--
+--   This function ignores the `wait` field and uses the value that was
+--   passed to the `Manager` on creation.
+--
+--   __Warning:__ The sampler should be stopped using `stopSampler` or `stopManager`.
+--
+--   @since 0.5.0.0
+startSamplerWith :: Manager -> Options -> IO Sampler
+startSamplerWith manager options = do
+  neverSetRef <- newIORef Set.empty
+  startSampler (samplerWith manager neverSetRef options)
 
-startEventLoopThread :: StackProfilerManager -> IO ()
-startEventLoopThread manager = do
-  !sinkAsync <- do
-    sinkAsync <- async (forever mainEventHandler)
-
-    -- if the main eventloop crashes for any reason, we want to know
-    link sinkAsync
-
-    pure
-      MkEventThread
-        { eventThread = sinkAsync
-        }
-
-  atomically $ do
-    writeTVar (mainEventLoopThread manager) (Just sinkAsync)
+-- | Internal helper.
+--
+--   Create a `SamplerDescr` for the given `Options`.
+samplerWith ::
+  Manager ->
+  IORef (Set ThreadId) ->
+  Options ->
+  SamplerDescr
+samplerWith samplerManager neverSetRef options =
+  MkSamplerDescr{samplerManager, samplerThreads, sampleInterval}
  where
-  mainEventHandler = do
-    msg <- Chan.readChan (messageChan manager)
-    run <- STM.atomically $ shouldProfile manager
-    case msg of
-      WriteProfileSample msgs ->
-        case run of
-          True ->
-            mapM_ Compat.traceBinaryEventIO msgs
-          False ->
-            -- If we received a sample but the eventlog is currently locked
-            -- discard the message.
-            pure ()
-      StartProfiling barrier -> do
-        STM.atomically $ enableSampling manager
-        putMVar barrier ()
-      StopProfiling barrier -> do
-        STM.atomically $ disableSampling manager
-        putMVar barrier ()
-      StartEventlog barrier -> do
-        STM.atomically $ enableEventLogging manager
-        putMVar barrier ()
-      StopEventlog barrier -> do
-        STM.atomically $ disableEventLogging manager
-        putMVar barrier ()
-      PublishInitEvents barrier -> do
-        symbolTable <- STM.atomically $ readSymbolTable (symbolTableRef manager)
-        let
-          msgs = Decode.initMessages symbolTable
+  MkOptions
+    { shouldSample
+    , sampleRtsThreads = fromBool -> shouldSampleRtsThreads
+    , sampleProfilerThreads = fromBool -> shouldSampleProfilerThreads
+    , sampleInterval
+    } = options
 
-        mapM_
-          Compat.traceBinaryEventIO
-          (fmap LBS.toStrict msgs)
+  samplerThreads = do
+    neverSet <- readIORef neverSetRef
+    (threadIds', neverSet') <- filterThreads neverSet =<< listThreads
+    writeIORef neverSetRef $! neverSet'
+    pure threadIds'
 
-        Debug.Trace.flushEventLog
-        putMVar barrier ()
+  filterThreads :: Set ThreadId -> [ThreadId] -> IO ([ThreadId], Set ThreadId)
+  filterThreads neverSet =
+    fmap (bimap catMaybes (foldr S.insert neverSet . toList))
+      . runWriterT
+      . traverse testThread
+   where
+    testThread :: ThreadId -> WriterT (DList ThreadId) IO (Maybe ThreadId)
+    testThread threadId
+      -- If the threadId is in the neverSet, do not sample it.
+      | threadId `S.member` neverSet =
+          pure Nothing
+      | otherwise = do
+          -- If the threadId is a profiler thread,
+          -- it should be sampled if-and-only-if shouldSampleProfilerThreads is true.
+          isProfilerThread <- liftIO (isProfilerThreadFor samplerManager threadId)
+          if isProfilerThread
+            then
+              evalShouldSample threadId shouldSampleProfilerThreads
+            else do
+              maybeThreadLabel <- liftIO (threadLabel threadId)
+              -- If the threadId is an RTS thread,
+              -- it should be sampled if-and-only-if shouldSampleRtsThreads is true.
+              if isRtsThread maybeThreadLabel
+                then
+                  evalShouldSample threadId shouldSampleRtsThreads
+                else
+                  -- Otherwise, run the user-provided predicate and follow its instructions.
+                  evalShouldSample threadId (shouldSample threadId maybeThreadLabel)
 
----------------------------------------------------------------------
--- Coordination utils
--- ----------------------------------------------------------------------------
+    -- Evaluate a `ShouldSample` judgement for the given threadId.
+    evalShouldSample :: ThreadId -> ShouldSample -> WriterT (DList ThreadId) IO (Maybe ThreadId)
+    evalShouldSample threadId = \case
+      Yes -> pure (Just threadId)
+      No -> pure Nothing
+      Never -> tell (fromList [threadId]) >> pure Nothing
 
-shutdownEventLoop :: StackProfilerManager -> IO ()
-shutdownEventLoop manager = do
-  sinkAsync <- atomically $ do
-    thread <- readTVar (mainEventLoopThread manager)
-    writeTVar (mainEventLoopThread manager) Nothing
-    pure thread
-
-  sendStopProfilingMessage manager
-  traverse_ (cancel . eventThread) sinkAsync
-
-addSamplerThread :: StackProfilerManager -> Async () -> IO ()
-addSamplerThread manager worker = do
-  -- if the worker crashes for any reason, we want to know
-  link worker
-
+-- | Was the given thread created by this library?
+isProfilerThreadFor :: Manager -> ThreadId -> IO Bool
+isProfilerThreadFor manager threadId =
   atomically $ do
-    STM.modifyTVar' (profilerThreads manager) $ \threadMap ->
-      (Map.insert (asyncThreadId worker) worker threadMap)
+    isEventLoopThread <-
+      fromMaybe False . fmap ((== threadId) . asyncThreadId . eventLoopAsync)
+        <$> readTVar (eventLoopThreadVar manager)
+    isSamplerThread <-
+      Map.member threadId
+        <$> readTVar (samplerThreadMapVar manager)
+    pure $ isEventLoopThread || isSamplerThread
 
-shutdownAllSamplerThreads :: StackProfilerManager -> IO ()
-shutdownAllSamplerThreads MkStackProfilerManager{profilerThreads} = do
-  threads <- atomically $ do
-    threadsMap <- readTVar profilerThreads
-    writeTVar profilerThreads Map.empty
-    pure $ Map.elems threadsMap
-
-  traverse_ cancel threads
-
--- ----------------------------------------------------------------------------
--- Utils
--- ----------------------------------------------------------------------------
-
--- | We don't want to sample the stack profiler threads themselves.
-isProfilerThread :: Maybe EventThread -> Set ThreadId -> ThreadId -> Bool
-isProfilerThread writerThread profilerThreadIds tid =
-  Set.member tid profilerThreadIds
-    || maybe False (== tid) (asyncThreadId . eventThread <$> writerThread)
-
--- | RTS threads are often not that interesting, we much rather want to focus on
--- the user code.
-isRtsThread :: ThreadId -> Maybe String -> Bool
-isRtsThread _ Nothing = False
-isRtsThread _tid (Just lbl) =
-  lbl == "TimerManager" || "IOManager on cap" `List.isPrefixOf` lbl
-
-isThreadOfInterest :: StackProfilerManager -> ThreadId -> IO Bool
-isThreadOfInterest manager tid = do
-  lbl <- threadLabel tid
-  (profilerThreadIds, eventlogWriter) <- STM.atomically $ do
-    threadMap <- readTVar (profilerThreads manager)
-    sink <- readTVar (mainEventLoopThread manager)
-    pure (Map.keysSet threadMap, sink)
-  pure $
-    not $
-      or
-        [ isProfilerThread eventlogWriter profilerThreadIds tid
-        , isRtsThread tid lbl
-        ]
+-- | Is the given thread an RTS thread?
+isRtsThread :: Maybe ThreadLabel -> Bool
+isRtsThread =
+  maybe False (\label -> label == "TimerManager" || "IOManager on cap" `isPrefixOf` label)
