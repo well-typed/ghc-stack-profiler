@@ -16,6 +16,10 @@ These eventlogs can be used in two ways:
 
 Unlike GHC's built-in cost-centre stack profiler, GHC Stack Profiler does _not_ require you to rebuild your program with profiling support and has virtually no overhead when it's not running. (See [Benchmarks](#benchmarks).)
 
+The following shows a call-stack profile created by GHC Stack Profiler of Agda version 2.8.0.1 checking the standard library in [speedscope](https://www.speedscope.app/):
+
+![A call-stack profile of Agda 2.8.0.1 checking the standard library.](assets/agda-with-ghc-stack-profiler-2026-09-11.png)
+
 ## Table of Contents
 
 - [Getting Started](#getting-started)
