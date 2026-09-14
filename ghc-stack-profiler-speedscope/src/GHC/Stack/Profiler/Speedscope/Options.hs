@@ -142,9 +142,9 @@ isolateEndParser =
 aggregationModeParser :: O.Parser AggregationMode
 aggregationModeParser =
   asum
-    [ O.flag' PerThread (O.long "per-thread" <> O.help "Group the profile per thread (default)")
-    , O.flag' PerCapability (O.long "per-capability" <> O.help "Group the profile per capability")
-    , O.flag' NoAggregation (O.long "no-aggregation" <> O.help "Perform no grouping, single view")
+    [ O.flag' PerThread (O.long "per-thread" <> O.help "Group the profiles by thread. (Default.)")
+    , O.flag' PerCapability (O.long "per-capability" <> O.help "Group the profiles by capability")
+    , O.flag' NoAggregation (O.long "no-aggregation" <> O.help "Do not aggregate the profiles.")
     , pure PerThread
     ]
 
