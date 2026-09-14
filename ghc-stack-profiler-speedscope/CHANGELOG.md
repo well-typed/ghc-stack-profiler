@@ -1,5 +1,9 @@
 # Revision history for ghc-stack-profiler-speedscope
 
+## 0.5.0.0 -- 2026-09-14
+
+Major version number changed to match `ghc-stack-profiler` and `ghc-stack-profiler-core`.
+
 ## 0.4.0.0 -- 2026-07-14
 
 - Switch to `ipedb` version 0.2.0.0 and the new database format.
