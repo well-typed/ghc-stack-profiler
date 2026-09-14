@@ -14,7 +14,7 @@ These eventlogs can be used in two ways:
 - [`ghc-stack-profiler-speedscope`](https://hackage.haskell.org/package/ghc-stack-profiler-speedscope) can be used to export call-stack profiles to [speedscope](https://www.speedscope.app/).
 - [`eventlog-live-otlp`](https://github.com/well-typed/eventlog-live#readme) can stream call-stack profiles, in real-time, to any observability platform that supports the [OpenTelemetry](https://opentelemetry.io/) protocol, such as [Grafana Cloud](https://grafana.com/).
 
-Unlike GHC's built-in cost-centre stack profiler, GHC Stack Profiler does _not_ require you to rebuild your program with profiling support and has virtually no overhead when it's not running.
+Unlike GHC's built-in cost-centre stack profiler, GHC Stack Profiler does _not_ require you to rebuild your program with profiling support and has virtually no overhead when it's not running. (See [Benchmarks](#benchmarks).)
 
 ## Table of Contents
 
@@ -23,6 +23,9 @@ Unlike GHC's built-in cost-centre stack profiler, GHC Stack Profiler does _not_ 
   - [GHC Stack Profiler with Speedscope](#ghc-stack-profiler-with-speedscope)
   - [GHC Stack Profiler with Eventlog Live – Real-Time Call-Stack Profiles](#ghc-stack-profiler-with-eventlog-live-real-time-call-stack-profiles)
   - [GHC Stack Profiler with Eventlog Socket – Dynamic Control](#ghc-stack-profiler-with-eventlog-socket--dynamic-control)
+- [Benchmarks](#benchmarks)
+  - [Benchmark: Agda 2.8.0.1 checking the standard library](#benchmark-agda-2801-checking-the-standard-library)
+  - [Benchmark: GHC 10.1 loading `Cabal-syntax`](#benchmark-ghc-101-loading-cabal-syntax)
 
 ## Getting Started
 
@@ -179,3 +182,70 @@ The following shows real-time call-stack profiles visualised in Grafan:
 When compiled with the `+control` feature flag, GHC Stack Profiler has built-in support for Eventlog Socket's control commands. This lets you dynamically start and stop profiling by writing the command to the eventlog socket. For a detailed explanation of control commands, see the section [Control Commands](https://github.com/well-typed/eventlog-socket#control-commands) in the README for Eventlog Socket.
 
 If you are using Eventlog Live, you can use its control server to send the GHC Stack Profiler control commands via HTTP. This lets you control profiling from your observability dashboard, e.g., using the Start/Stop buttons at the bottom of the Grafana dashboard in [the previous section](#eventlog-live-real-time-call-stack-profiles). For detailed instructions, see the section [Eventlog Live with Eventlog Socket](https://github.com/well-typed/eventlog-live/tree/main/eventlog-live#eventlog-live-with-eventlog-socket) in the README for Eventlog Live.
+
+## Benchmarks
+
+This section discusses our benchmarks that measure the overhead of instrumenting and profiling your application with GHC Stack Profiler and GHC's built-in cost-centre profiler. Our conclusions:
+
+- Instrumenting your application with GHC Stack Profiler has no measurable overhead.
+
+  Running GHC Stack Profiler has about 2% overhead with no significant difference between the measured sample intervals.
+
+- Instrumenting your application with the cost-centre profiler has around 50% overhead with no cost centres and around 100% overhead with late cost centres.
+
+  Running the cost-centre profiler has an additional 2% overhead with no significant difference between the measured sample intervals.
+
+### Benchmark: Agda 2.8.0.1 checking the standard library
+
+The benchmark measures Agda 2.8.0.1 checking the standard library:
+
+```sh
+# from within std-lib/ in the Agda repository
+agda --build-library +RTS -N1
+```
+
+There are three classes of benchmarks:
+
+- The `baseline` benchmark uses Agda with no modifications.
+
+- The `ghc-stack-profiler` benchmarks use Agda instrumented with `ghc-stack-profiler`.
+
+  (For details, see [Instrument your application with GHC Stack Profiler](#instrument-your-application-with-ghc-stack-profiler).)
+
+- The `profiling` benchmarks use Agda instrumented with cost-centre profiling, using the following `cabal.project`, where the value of `profiling-detail` taken from the benchmark name:
+
+  ```hs
+  profiling: True
+
+  package *
+    profiling-detail: none -- or late
+  ```
+
+  (The `-p` RTS option was used to the profiler and the `-V` RTS option was used to set the sample interval.)
+
+The results are normalised as a percentage of the `baseline` benchmark which took, on average, 3 minutes and 55 seconds on an otherwise idle machine. The timings are the result of, on average, 10 runs excluding warmup.
+
+![A bar chart that shows the relative timing of the various benchmarks compared to the baseline. For GHC Stack Profiler, the "instrumented only" benchmark has no measurable overhead, and both benchmarks that sample the call-stack have about 2% overhead. For cost-centre profiling, the "instrumented only" benchmark that introduces no cost centres has 54% overhead, the "instrumented only" benchmark that introduces late cost centres has 96% overhead, and both benchmarks that sample the cost-centre stacks have another 2% overhead on top of that.](assets/benchmark-agda-2.8.0.1-checking-agda-stdlib.png)
+
+### Benchmark: GHC 10.1 loading `Cabal-syntax`
+
+The benchmark measures GHC 10.1 (9a442c9383) loading `Cabal-syntax` in interactive mode, using the GHC command obtained from `hie-bios`:
+
+```sh
+# from within libraries/Cabal/ in the GHC repository
+hie-bios -v debug Cabal-syntax/src/Distribution/CabalSpecVersion.hs
+```
+
+There two classes of benchmarks:
+
+- The `ghc-stack-profiler` benchmarks use GHC instrumented with `ghc-stack-profiler`.
+
+  (For details, see [Instrument your application with GHC Stack Profiler](#instrument-your-application-with-ghc-stack-profiler).)
+
+- The `profiling` benchmarks use GHC instrumented with cost-centre profiling, using the `default` build flavour with the `profiled_ghc` [flavour transformer](https://gitlab.haskell.org/ghc/ghc/blob/master/hadrian/doc/flavours.md), which builds GHC and its dependencies with profiling and adds late cost centres.
+
+  (The `-pj` RTS option was used to enable the profiler and the `-V` RTS option was used to set the sample interval.)
+
+The results are normalised as a percentage of the `ghc-stack-profiler (instrumented only)` benchmark which took, on average, 7 seconds. The timings are the result of, on average, 3 runs without warmup on a noisy machine. The measurement that shows that sampling at a 10ms interval is slower than a 1ms interval is likely due to this noise. We did not included a `baseline` benchmark with an uninstrumented GHC, as there was no measurable overhead in the previous benchmark. We also did not include a `profiling (instrumented only, profiling-detail: none)` benchmark, as that would have required adding a new flavour transformer to GHC's build system.
+
+![A bar chart that shows the relative timing of the various benchmarks compared to the "instrumented only" benchmark for GHC Stack Profiler. For GHC Stack Profiler, both benchmarks that sample the call-stack have about 7-8% overhead. For cost-centre profiling, the "instrumented only" benchmark has about 128% overhead, and both benchmarks that sample the cost-centre stacks have another 3-8% overhead.](assets/benchmark-ghc-10.1-9a442c9383-loading-Cabal-syntax.png)
