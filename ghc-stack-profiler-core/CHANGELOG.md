@@ -1,5 +1,9 @@
 # Revision history for ghc-stack-profiler-core
 
+## 0.5.0.0 -- 2026-09-14
+
+Major revision of the public API.
+
 ## 0.4.0.0 -- 2026-07-14
 
 Major version number changed to match `ghc-stack-profiler-speedscope`.
