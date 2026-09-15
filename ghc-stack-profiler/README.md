@@ -177,7 +177,7 @@ The `ghc-stack-profiler-speedscope` program has several options that control the
 
 If you have instrumented your application, you can run it with GHC Stack Profiler and Eventlog Live and stream call-stack profiles, in real-time, to any observability platform that supports the [OpenTelemetry](https://opentelemetry.io/) protocol, such as [Grafana Cloud](https://grafana.com/). For detailed instructions, see the section [Eventlog Live with GHC Stack Profiler](https://github.com/well-typed/eventlog-live#eventlog-live-with-ghc-stack-profiler) in the README for Eventlog Live.
 
-The following shows real-time call-stack profiles visualised in Grafan:
+The following shows real-time call-stack profiles visualised in Grafana:
 
 ![A screen recording of the Grafana Call-Stack Profiles dashboard for the jumpy-jump example program.](assets/jumpy-jump-with-ghc-stack-profiler-2026-07-31.gif)
 
