@@ -9,6 +9,8 @@ module GHC.Stack.Profiler.Core (
 
   -- * Binary Eventlog Protocol Messages
   Message (..),
+  ProtocolVersion (MkProtocolVersion, MyProtocolVersion),
+  ProtocolVersionMismatch (..),
   CallStackChunk (..),
   StringDef (..),
   SourceLocationDef (..),
@@ -69,6 +71,8 @@ import GHC.Stack.Profiler.Core.Internal.Eventlog (
   CapabilityId (..),
   IpeId (..),
   Message (..),
+  ProtocolVersion (MkProtocolVersion, MyProtocolVersion),
+  ProtocolVersionMismatch (..),
   SourceLocationDef (..),
   SourceLocationId (..),
   StringDef (..),

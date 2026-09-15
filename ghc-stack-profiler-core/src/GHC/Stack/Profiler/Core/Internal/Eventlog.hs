@@ -3,6 +3,8 @@
 module GHC.Stack.Profiler.Core.Internal.Eventlog (
   -- * Eventlog Message types
   Message (..),
+  ProtocolVersion (MkProtocolVersion, MyProtocolVersion),
+  ProtocolVersionMismatch (..),
   CallStackChunk (..),
   StringDef (..),
   SourceLocationDef (..),
@@ -40,8 +42,8 @@ module GHC.Stack.Profiler.Core.Internal.Eventlog (
   threadIdSize,
 ) where
 
-import Control.Exception (assert)
-import Control.Monad (replicateM)
+import Control.Exception (Exception (..), assert, throw)
+import Control.Monad (replicateM, when)
 import Data.Binary
 import Data.Binary.Get (getByteString, runGetOrFail)
 import Data.Binary.Put (putByteString)
@@ -90,7 +92,9 @@ import Text.Printf (printf)
 --  := (sourceLocationId: 'Word64') (row: 'Word32') (column: 'Word32') (functionId: 'Word64') (filename: 'Word64')
 -- @
 data Message
-  = -- | A chunk of the call-stack, indicated by the prefix @FF CA@.
+  = -- | The version of the protocol.
+    ProtocolVersion !ProtocolVersion
+  | -- | A chunk of the call-stack, indicated by the prefix @FF CA@.
     --
     --   This variant indicates that no further 'CallStackChunk' or 'CallStackFinal' will follow.
     CallStackFinal !CallStackChunk
@@ -111,6 +115,42 @@ data Message
     --   @filename@, for future use in call-stack messages.
     SourceLocationDef !SourceLocationDef
   deriving (Eq, Ord, Show, Read, Generic)
+
+-- | The version of the protocol implemented by the `Message` type.
+newtype ProtocolVersion
+  = MkProtocolVersion {getProtocolVersion :: Word8}
+  deriving (Eq, Ord, Show, Read, Generic)
+  deriving newtype (Binary)
+
+-- | The version of the protocol implemented by this package.
+--
+--   __Note:__ This should always match the super-major version number of the
+--             @ghc-stack-profiler-core@ package. If the package version is
+--             @A.B.C.D@, the protocol version is @A@.
+pattern MyProtocolVersion :: ProtocolVersion
+pattern MyProtocolVersion = MkProtocolVersion 0
+
+data ProtocolVersionMismatch
+  = MkProtocolVersionMismatch
+  { expectProtocolVersion :: !ProtocolVersion
+  , actualProtocolVersion :: !ProtocolVersion
+  }
+  deriving (Eq, Ord, Show, Read, Generic)
+
+instance Exception ProtocolVersionMismatch where
+  displayException :: ProtocolVersionMismatch -> String
+  displayException e =
+    let
+      expect = getProtocolVersion (expectProtocolVersion e)
+      actual = getProtocolVersion (actualProtocolVersion e)
+    in
+      concat
+        [ "The protocol version of the input ("
+        , show actual
+        , ") does not match the version implemented by this package ("
+        , show expect
+        , ")."
+        ]
 
 data CallStackChunk = MkCallStackChunk
   { callStackChunkThreadId :: !ThreadId
@@ -175,6 +215,9 @@ newtype IpeId = MkIpeId
   }
   deriving (Eq, Ord, Show, Read, Generic)
 
+-- | Deserialise a `Message`.
+--
+--   __Warning:__ This function may throw `ProtocolVersionMismatch`.
 deserializeEventlogMessage :: LBS.ByteString -> Either String Message
 deserializeEventlogMessage msg = case runGetOrFail get msg of
   Left (_, _, errMsg) -> Left errMsg
@@ -200,7 +243,8 @@ joinCallStackChunks msgs =
 -- Message Tags
 
 data MessageTag
-  = CallStackFinalTag
+  = ProtocolVersionTag
+  | CallStackFinalTag
   | CallStackChunkTag
   | StringDefTag
   | SourceLocationDefTag
@@ -211,6 +255,7 @@ messageTagSize = 2
 
 messageTagToWord16 :: MessageTag -> Word16
 messageTagToWord16 = \case
+  ProtocolVersionTag -> 0xFFC0
   CallStackFinalTag -> 0xFFCA
   CallStackChunkTag -> 0xFFCB
   StringDefTag -> 0xFFCC
@@ -223,6 +268,7 @@ instance Binary MessageTag where
   get :: Get MessageTag
   get =
     getWord16 >>= \case
+      0xFFC0 -> pure ProtocolVersionTag
       0xFFCA -> pure CallStackFinalTag
       0xFFCB -> pure CallStackChunkTag
       0xFFCC -> pure StringDefTag
@@ -240,9 +286,13 @@ instance Binary MessageTag where
 -------------------------------------------------------------------------------
 -- Messages
 
+-- | __Warning:__ `get` may throw `ProtocolVersionMismatch`.
 instance Binary Message where
   put :: Message -> Put
   put = \case
+    ProtocolVersion protocolVersion -> do
+      put ProtocolVersionTag
+      put protocolVersion
     CallStackFinal callStackChunk -> do
       put CallStackFinalTag
       put callStackChunk
@@ -259,6 +309,12 @@ instance Binary Message where
   get :: Get Message
   get =
     get >>= \case
+      ProtocolVersionTag -> do
+        protocolVersion <- get
+        when (protocolVersion /= MyProtocolVersion) $
+          throw $
+            MkProtocolVersionMismatch MyProtocolVersion protocolVersion
+        pure $ ProtocolVersion protocolVersion
       CallStackFinalTag ->
         CallStackFinal <$> get
       CallStackChunkTag ->
