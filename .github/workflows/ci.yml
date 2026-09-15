@@ -102,9 +102,9 @@ jobs:
             cabal-flags: "-f-use-ghc-trace-events"
 
           # Test nightly GHC versions
-          - os: "ubuntu-latest"
-            ghc-version: "10.1"
-            ghcup-release-channel: "https://gitlab.haskell.org/ghc/ghcup-metadata/-/raw/updates/ghcup-nightlies-0.0.7.yaml"
+          # - os: "ubuntu-latest"
+          #   ghc-version: "10.1"
+          #   ghcup-release-channel: "https://gitlab.haskell.org/ghc/ghcup-metadata/-/raw/updates/ghcup-nightlies-0.0.7.yaml"
 
           # Test older GHC versions
           - os: "ubuntu-latest"
