@@ -64,16 +64,14 @@ serializeMessage = runPut . put
 serializeMessages :: [Message] -> [LBS.ByteString]
 serializeMessages = map serializeMessage
 
-initMessages :: SymbolTableWriter MapTable -> [LBS.ByteString]
+initMessages :: SymbolTableWriter MapTable -> [Message]
 initMessages symbolTable =
   let
     (stringDefs, srcLocDefs) = definitions symbolTable
-    binaryEventlogMessages =
-      ( map StringDef stringDefs
-          ++ map SourceLocationDef srcLocDefs
-      )
   in
-    serializeMessages binaryEventlogMessages
+    ( map StringDef stringDefs
+        ++ map SourceLocationDef srcLocDefs
+    )
 
 definitions :: SymbolTableWriter MapTable -> ([StringDef], [SourceLocationDef])
 definitions table =
