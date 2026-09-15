@@ -5,8 +5,8 @@ license: BSD-3-Clause
 author: Hannes Siebenhandl, Wen Kokke, Matthew Pickering
 maintainer: hannes@well-typed.com
 build-type: Simple
-synopsis: RTS Callstack profiler for GHC.
-description:
+synopsis: A light-weight call-stack profiler for GHC
+description: A light-weight call-stack profiler for GHC!
 extra-doc-files:
   CHANGELOG.md
   README.md
