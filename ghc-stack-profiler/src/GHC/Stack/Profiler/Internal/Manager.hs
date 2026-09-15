@@ -106,6 +106,9 @@ newManager wait = do
 -- | Stop a `Manager`.
 --
 --   This also stops every `Sampler` started by this manager.
+--
+--   __Warning:__ If the `Manager` is not stopped before the program exits,
+--   some messages may not be written to the eventlog.
 stopManager :: Manager -> IO ()
 stopManager manager = do
   stopAllSamplerThreads manager
