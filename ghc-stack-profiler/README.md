@@ -114,7 +114,7 @@ To instrument your application with GHC Stack Profiler, you need to make four ch
         These are symbols that are either built into GHC or defined in the [_boot libraries_](https://gitlab.haskell.org/ghc/ghc/-/wikis/working-conventions/boot-libraries) that came with GHC, such as `base`.
         The boot packages are _never_ rebuilt by Cabal and are unaffected by the `package *` stanza.
 
-    2.  To build the GHC and the boot libaries with info table maps, you must build GHC with the `+ipe` flavour.
+    2.  To build the GHC and the boot libraries with info table maps, you must build GHC with the `+ipe` flavour.
 
         The easiest way to do this is using `ghcup`. Some variant of the following command may work for you:
 
@@ -227,7 +227,7 @@ There are three classes of benchmarks:
 
   (The `-p` RTS option was used to the profiler and the `-V` RTS option was used to set the sample interval.)
 
-The results are normalised as a percentage of the `baseline` benchmark which took, on average, 3 minutes and 55 seconds on an otherwise idle machine. The timings are the result of, on average, 10 runs excluding warmup.
+The results are normalised as a percentage of the `baseline` benchmark which took, on average, 3 minutes and 55 seconds on an otherwise idle machine. The timings are the result of, on average, 10 runs excluding warm-up.
 
 ![A bar chart that shows the relative timing of the various benchmarks compared to the baseline. For GHC Stack Profiler, the "instrumented only" benchmark has no measurable overhead, and both benchmarks that sample the call-stack have about 2% overhead. For cost-centre profiling, the "instrumented only" benchmark that introduces no cost centres has 54% overhead, the "instrumented only" benchmark that introduces late cost centres has 96% overhead, and both benchmarks that sample the cost-centre stacks have another 2% overhead on top of that.](assets/benchmark-agda-2.8.0.1-checking-agda-stdlib.png)
 
@@ -250,6 +250,6 @@ There two classes of benchmarks:
 
   (The `-pj` RTS option was used to enable the profiler and the `-V` RTS option was used to set the sample interval.)
 
-The results are normalised as a percentage of the `ghc-stack-profiler (instrumented only)` benchmark which took, on average, 7 seconds. The timings are the result of, on average, 3 runs without warmup on a noisy machine. The measurement that shows that sampling at a 10ms interval is slower than a 1ms interval is likely due to this noise. We did not included a `baseline` benchmark with an uninstrumented GHC, as there was no measurable overhead in the previous benchmark. We also did not include a `profiling (instrumented only, profiling-detail: none)` benchmark, as that would have required adding a new flavour transformer to GHC's build system.
+The results are normalised as a percentage of the `ghc-stack-profiler (instrumented only)` benchmark which took, on average, 7 seconds. The timings are the result of, on average, 3 runs without warm-up on a noisy machine. The measurement that shows that sampling at a 10ms interval is slower than a 1ms interval is likely due to this noise. We did not include a `baseline` benchmark with an uninstrumented GHC, as there was no measurable overhead in the previous benchmark. We also did not include a `profiling (instrumented only, profiling-detail: none)` benchmark, as that would have required adding a new flavour transformer to GHC's build system.
 
 ![A bar chart that shows the relative timing of the various benchmarks compared to the "instrumented only" benchmark for GHC Stack Profiler. For GHC Stack Profiler, both benchmarks that sample the call-stack have about 7-8% overhead. For cost-centre profiling, the "instrumented only" benchmark has about 128% overhead, and both benchmarks that sample the cost-centre stacks have another 3-8% overhead.](assets/benchmark-ghc-10.1-9a442c9383-loading-Cabal-syntax.png)
