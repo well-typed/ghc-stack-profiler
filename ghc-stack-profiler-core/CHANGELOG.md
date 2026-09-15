@@ -1,8 +1,14 @@
 # Revision history for ghc-stack-profiler-core
 
-## 0.5.0.0 -- 2026-09-14
+## 0.5.0.0 -- 2026-09-15
 
 Major revision of the public API.
+
+- Add a `ProtocolVersion` message to detect protocol incompatibility.
+- Change the format of `ThreadId` in the protocol to `Word64`.
+  This matches the `uint64_t` used by the RTS.
+- Change the format of `CapabilityId` in memory to `Word32`.
+  This matches the `uint32_t` used by the RTS.
 
 ## 0.4.0.0 -- 2026-07-14
 
