@@ -6,7 +6,7 @@ author: Hannes Siebenhandl, Wen Kokke, Matthew Pickering
 maintainer: hannes@well-typed.com
 build-type: Simple
 synopsis:
-  Export a @ghc-stack-profiler@ call-stack profile from an eventlog to speedscope
+  Export a ghc-stack-profiler call-stack profile from an eventlog to speedscope
 
 description:
   Export a @ghc-stack-profiler@ call-stack profile from an eventlog to speedscope.
