@@ -191,6 +191,8 @@ handleEvent infoProvTable st ev =
         Left _err ->
           pure st
         Right evMsg -> case evMsg of
+          GSPC.ProtocolVersion _ver -> do
+            pure st
           GSPC.CallStackFinal msg -> do
             let
               (callStackMessage, elProf1) = hydrateBinaryEventlog st msg
