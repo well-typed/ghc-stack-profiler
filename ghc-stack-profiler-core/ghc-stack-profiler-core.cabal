@@ -6,7 +6,7 @@ author: Hannes Siebenhandl, Wen Kokke, Matthew Pickering
 maintainer: hannes@well-typed.com
 build-type: Simple
 synopsis:
-  The eventlog protocol used by @ghc-stack-profiler@
+  The eventlog protocol used by ghc-stack-profiler
 
 description:
   The eventlog protocol used by @ghc-stack-profiler@.
