@@ -5,10 +5,13 @@ license: BSD-3-Clause
 author: Hannes Siebenhandl, Wen Kokke, Matthew Pickering
 maintainer: hannes@well-typed.com
 build-type: Simple
-synopsis: Thread sample types and serialisation logic for `ghc-stack-profiler`.
+synopsis:
+  The eventlog protocol used by @ghc-stack-profiler@
+
 description:
-  Thread sample types and serialisation logic for `ghc-stack-profiler`.
-  Defines the interface and serialisation logic to turn an RTS Callstack into a binary message suitable for the eventlog.
+  The eventlog protocol used by @ghc-stack-profiler@.
+
+  For details, see [@ghc-stack-profiler@](https://hackage.haskell.org/package/ghc-stack-profiler).
 
 extra-doc-files: CHANGELOG.md
 category: Profiling, Benchmarking, Development
