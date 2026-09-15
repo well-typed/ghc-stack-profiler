@@ -16,6 +16,7 @@ import qualified Control.Monad.STM as STM
 import qualified Data.ByteString.Lazy as BSL
 import Data.Coerce (coerce)
 import Data.Foldable (for_)
+import Data.Word (Word32)
 import GHC.Conc (BlockReason (..), ThreadStatus (..), labelThread, threadStatus)
 import GHC.Conc.Sync (fromThreadId)
 import GHC.Internal.Control.Monad (forever)
@@ -158,7 +159,7 @@ sampleCallStackFor threadId = do
           Just $
             CallStackSample
               { callStackSampleThreadId = GSPC.MkThreadId . fromThreadId $ threadId
-              , callStackSampleCapabilityId = GSPC.MkCapabilityId capNo
+              , callStackSampleCapabilityId = GSPC.MkCapabilityId . fromIntegral @Int @Word32 $ capNo
               , callStackSampleStackSnapshot = stackSnapshot
               }
     else pure Nothing
