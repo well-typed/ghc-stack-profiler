@@ -5,11 +5,13 @@ license: BSD-3-Clause
 author: Hannes Siebenhandl, Wen Kokke, Matthew Pickering
 maintainer: hannes@well-typed.com
 build-type: Simple
-synopsis: Convert eventlog messages from `ghc-stack-profiler` into a speedscope json.
+synopsis:
+  Export a @ghc-stack-profiler@ call-stack profile from an eventlog to speedscope
+
 description:
-  Convert eventlog messages from `ghc-stack-profiler` into a speedscope json.
-  Produce a flame graph for the RTS callstack samples obtained from a program instrumented with
-  'ghc-stack-profiler'.
+  Export a @ghc-stack-profiler@ call-stack profile from an eventlog to speedscope.
+
+  For details, see [@ghc-stack-profiler@](https://hackage.haskell.org/package/ghc-stack-profiler).
 
 extra-doc-files: CHANGELOG.md
 category: Profiling, Benchmarking, Development
