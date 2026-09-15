@@ -131,6 +131,9 @@ withProfilerFromEnv action =
 --   __Warning:__ This function spawns a `Manager` thread.
 --   Having multiple concurrent `Manager` threads is unsupported and unsafe.
 --
+--   __Warning:__ If the `Profiler` is not stopped before the program exits,
+--   some messages may not be written to the eventlog.
+--
 --   @since 0.5.0.0
 startProfiler :: IO Profiler
 startProfiler =
