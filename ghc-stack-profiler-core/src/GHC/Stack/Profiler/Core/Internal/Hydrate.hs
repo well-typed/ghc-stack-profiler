@@ -47,8 +47,8 @@ hydrateEventlogCallStackMessage decodeTable msg =
               (lookupSourceLocationId decodeTable srcLocId)
         pure $ UserAnnotation str srcLoc
 
-    itemsOrErros = map decodeItem (callStackChunk msg)
-    (errors, items) = partitionEithers itemsOrErros
+    itemsOrErrors = map decodeItem (callStackChunk msg)
+    (errors, items) = partitionEithers itemsOrErrors
   in
     ( MkCallStack
         { callCapabilityId = callStackChunkCapabilityId msg
