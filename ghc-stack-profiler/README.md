@@ -4,7 +4,7 @@ _A light-weight call-stack profiler for GHC!_
 
 # GHC Stack Profiler
 
-> ⚠️ **Warning:** This package is experimental. It is versioned according to the PVP. Breaking changes should be expected and no effort will be made to avoid major version bumps until at least version 1.0.0.0.
+> ⚠️ **Warning:** This package is experimental. It is versioned according to the PVP. Breaking changes should be expected and no effort will be made to avoid major version bumps.
 
 > ⚠️ **Warning:** Due to a bug in GHC, copying the call-stack may cause a segfault at runtime in applications built with GHC 9.14.1 and older. If you use GHC Stack Profiler in production, you should build your application with GHC 9.14.2 or newer.
 
