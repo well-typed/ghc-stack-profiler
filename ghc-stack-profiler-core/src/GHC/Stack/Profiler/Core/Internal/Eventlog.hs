@@ -144,6 +144,7 @@ newtype ThreadId
   { getThreadId :: Word64
   }
   deriving (Show, Eq, Ord, Read, Generic)
+  deriving newtype (Binary)
 
 -- | The ID of a capability.
 newtype CapabilityId
@@ -282,21 +283,6 @@ messageMinSize =
       , {- SourceLocationDef -}
         sourceLocationDefSize
       ]
-
--------------------------------------------------------------------------------
--- ThreadId
-
-instance Binary ThreadId where
-  put :: ThreadId -> Put
-  put (MkThreadId threadId) =
-    -- TODO: This _should be_ a Word64.
-    putWord32 (fromIntegral threadId)
-
-  get :: Get ThreadId
-  get = MkThreadId . fromIntegral <$> getWord32
-
-threadIdSize :: Int
-threadIdSize = 8
 
 -------------------------------------------------------------------------------
 -- CallStackChunks
@@ -520,6 +506,10 @@ callStackMaxLen = callStackMaxLen' messageMaxSize
 -- | The size of a serialised `CapabilityId`.
 capabilityIdSize :: Int
 capabilityIdSize = 4
+
+-- | The size of a serialised `ThreadId`.
+threadIdSize :: Int
+threadIdSize = 8
 
 -- | The maximum number of `CallStackFrame`s in a single `Message`,
 --   with a variable `messageMaxSize`. Used for testing.
