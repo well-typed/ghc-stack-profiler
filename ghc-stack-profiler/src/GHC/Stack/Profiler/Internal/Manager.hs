@@ -109,6 +109,8 @@ newManager wait = do
 --
 --   __Warning:__ If the `Manager` is not stopped before the program exits,
 --   some messages may not be written to the eventlog.
+--
+--   @since 0.5.0.0
 stopManager :: Manager -> IO ()
 stopManager manager = do
   stopAllSamplerThreads manager
@@ -267,6 +269,8 @@ stopEventLoop manager = do
 --   This blocks until all `Sampler` threads have started.
 --
 --   __Warning:__ This function deadlocks when used with a stopped `Manager`.
+--
+--  @since 0.5.0.0
 startProfiling :: Manager -> IO ()
 startProfiling manager = do
   -- TODO: This atomically is redundant, the main loop thread sets it anyway.
@@ -280,6 +284,8 @@ startProfiling manager = do
 --   This blocks until all `Sampler` threads have stopped.
 --
 --   __Warning:__ This function deadlocks when used with a stopped `Manager`.
+--
+--  @since 0.5.0.0
 stopProfiling :: Manager -> IO ()
 stopProfiling manager = do
   -- TODO: This atomically is *not* redundant. It makes sure no new samples

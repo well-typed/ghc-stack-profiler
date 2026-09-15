@@ -28,6 +28,8 @@ castPtrToWord64 ptr = case ptrToWordPtr ptr of
 -- Glob
 -------------------------------------------------------------------------------
 
+-- NOTE: The `Glob` type (but not its implementation) is part of the public API.
+
 -- | A glob pattern.
 --
 --   Use `fromString` to construct glob patterns from strings.
@@ -35,6 +37,8 @@ castPtrToWord64 ptr = case ptrToWordPtr ptr of
 --   A @*@ matches any string, including the empty string.
 --
 --   One can remove the special meaning of @*@ by preceding it with a backslash.
+--
+--  @since 0.5.0.0
 newtype Glob = Glob [GlobPart]
 
 data GlobPart = Wildcard | Literal String
@@ -66,7 +70,11 @@ instance Show Glob where
     escape ('*' : str) = '\\' : '*' : escape str
     escape (c : str) = c : escape str
 
--- | Test if the glob pattern matches the given string.
+-- NOTE: The `matches` function is part of the public API.
+
+-- | Test if the given `Glob` pattern matches the given `String`.
+--
+--   @since 0.5.0.0
 matches :: Glob -> String -> Bool
 matches (Glob parts) = go parts
  where

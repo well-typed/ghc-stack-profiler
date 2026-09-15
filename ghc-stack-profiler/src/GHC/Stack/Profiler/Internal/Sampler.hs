@@ -41,6 +41,8 @@ import GHC.Stack.Profiler.Internal.Manager (
 -- NOTE: Part of the public API.
 
 -- | The sampling interval.
+--
+--   @since 0.5.0.0
 newtype Interval
   = MkIntervalMillis {intervalMillis :: Int}
   deriving stock (Eq, Show)
