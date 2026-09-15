@@ -49,6 +49,7 @@ import qualified Data.Map.Strict as Map
 import qualified Debug.Trace
 import qualified Debug.Trace.Binary.Compat as Compat
 import GHC.Generics (Generic)
+import qualified GHC.Stack.Profiler.Core as GSPC (Message (ProtocolVersion), ProtocolVersion (MyProtocolVersion))
 import qualified GHC.Stack.Profiler.Internal.Decode as Decode
 import GHC.Stack.Profiler.Internal.SymbolTable
 
@@ -229,9 +230,11 @@ eventHandler manager = do
     PublishInitEvents barrier -> do
       symbolTable <- atomically $ readSymbolTable (symbolTableRef manager)
       let
-        binaryMessages = Decode.initMessages symbolTable
+        versionMessage = GSPC.ProtocolVersion GSPC.MyProtocolVersion
+        messages = versionMessage : Decode.initMessages symbolTable
+        messagesBytes = Decode.serializeMessages messages
 
-      for_ binaryMessages $ \binaryMessage ->
+      for_ messagesBytes $ \binaryMessage ->
         Compat.traceBinaryEventIO (BSL.toStrict binaryMessage)
 
       Debug.Trace.flushEventLog
