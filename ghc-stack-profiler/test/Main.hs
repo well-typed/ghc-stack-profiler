@@ -31,7 +31,7 @@ main =
 bug_stopManagerTwice :: TestTree
 bug_stopManagerTwice = do
   testCase "stopManager twice" $ do
-    manager <- startManager False
+    manager <- startManager mempty False
     stopManager manager
     timedOut <-
       fmap isNothing . timeout 5_000_000 $ do
@@ -41,9 +41,9 @@ bug_stopManagerTwice = do
 test_stopSamplerTwice :: TestTree
 test_stopSamplerTwice = do
   testCase "stopSampler twice" $
-    withManager False $ \manager -> do
+    withManager mempty False $ \manager -> do
       threadId <- myThreadId
-      sampler <- startSamplerFor manager threadId 10
+      sampler <- startSamplerFor mempty manager threadId 10
       stopSampler manager sampler
       timedOut <-
         fmap isNothing . timeout 5_000_000 $ do

@@ -17,7 +17,8 @@ module GHC.Stack.Profiler (
     shouldSample,
     sampleRtsThreads,
     sampleProfilerThreads,
-    sampleInterval
+    sampleInterval,
+    sampleProfilerLogger
   ),
   defaultOptions,
   Interval (..),
@@ -34,6 +35,15 @@ module GHC.Stack.Profiler (
 
   -- *** Environment Variables
   fromEnv,
+
+  -- *** Loggers
+  Logger (..),
+  Log,
+  Severity (..),
+  WithSev (..),
+  emptyLogger,
+  eventlogLogger,
+  stderrLogger,
 
   -- * Low-Level API
 
@@ -59,22 +69,26 @@ import Control.Concurrent.Async (Async (..))
 import Control.Exception
 import Control.Monad.IO.Class (MonadIO (..))
 import Data.Bifunctor (Bifunctor (..))
+import Data.Char (toUpper)
 import Data.Foldable (traverse_)
 import Data.Functor ((<&>))
+import Data.Functor.Contravariant (contramap)
 import Data.IORef (IORef, newIORef, readIORef, writeIORef)
-import Data.List (isPrefixOf)
+import Data.List (intercalate, isPrefixOf)
 import qualified Data.Map.Strict as Map
 import Data.Maybe (catMaybes, fromMaybe)
 import Data.Set (Set)
 import qualified Data.Set as S
 import qualified Data.Set as Set
 import Data.String (IsString (..))
+import Debug.Trace (traceEventIO)
 import GHC.Conc
 import GHC.Conc.Sync (threadLabel)
 import GHC.IsList (IsList (..))
 import qualified GHC.Stack.Profiler.Internal.Eventlog.Socket as Eventlog.Socket
+import GHC.Stack.Profiler.Internal.Logger
 import GHC.Stack.Profiler.Internal.Manager
-import GHC.Stack.Profiler.Internal.Sampler (Interval (MkIntervalMillis), SamplerDescr (MkSamplerDescr), startSampler, stopSampler, withSampler)
+import GHC.Stack.Profiler.Internal.Sampler (Interval (MkIntervalMillis), SamplerDescr (MkSamplerDescr), SamplerLog, prettySamplerLog, startSampler, stopSampler, withSampler)
 import qualified GHC.Stack.Profiler.Internal.Sampler as SamplerDescr
 import GHC.Stack.Profiler.Internal.Util (DList, Glob, WriterT, matches, runWriterT, tell)
 import System.Environment (lookupEnv)
@@ -144,8 +158,8 @@ startProfiler =
 --   @since 0.5.0.0
 startProfilerWith :: Options -> IO Profiler
 startProfilerWith options = do
-  profilerManager <- startManager (wait options)
-  profilerSampler <- startSamplerWith profilerManager options
+  profilerManager <- startManager (sampleProfilerLogger options) (wait options)
+  profilerSampler <- startSamplerWith (sampleProfilerLogger options) profilerManager options
   pure MkProfiler{profilerManager, profilerSampler}
 
 -- | Variant of `startProfiler` that accepts `Options`.
@@ -192,6 +206,9 @@ stopProfiler MkProfiler{profilerManager, profilerSampler} = do
 --   [@`GHC.Stack.Profiler.sampleProfilerThreads` :: `Bool`@]:
 --     Determines if the threads spawned by @ghc-stack-profiler@ should be
 --     sampled. The default is @False@.
+--   [@`GHC.Stack.Profiler.sampleProfilerLogger` :: `Logger` (`WithSev` `Log`)@]:
+--     Internal logger for @ghc-stack-profiler@. The default is `emptyLogger`.
+--     (/Since: 0.5.1.0./)
 --   [@`GHC.Stack.Profiler.sampleInterval` :: `Interval`@]:
 --     Determines the sampling interval.
 --     The default is @10@ milliseconds.
@@ -202,6 +219,7 @@ data Options = MkOptions
   , shouldSample :: ThreadFilter
   , sampleRtsThreads :: !Bool
   , sampleProfilerThreads :: !Bool
+  , sampleProfilerLogger :: Logger (WithSev Log)
   , sampleInterval :: !Interval
   }
 
@@ -215,8 +233,48 @@ defaultOptions =
     , shouldSample = \_threadId _maybeThreadLabel -> Yes
     , sampleRtsThreads = False
     , sampleProfilerThreads = False
+    , sampleProfilerLogger = mempty
     , sampleInterval = MkIntervalMillis 10
     }
+
+-- | An internal log message.
+--
+--   @since 0.5.1.0
+data Log
+  = LogManager ManagerLog
+  | LogSampler SamplerLog
+
+-- | The empty logger that discards all log message.
+--
+--   @since 0.5.1.0
+emptyLogger :: Logger (WithSev Log)
+emptyLogger = mempty
+
+-- | Internal helper.
+--
+--   Pretty-print an internal log message.
+prettyLog :: Log -> String
+prettyLog = \case
+  LogManager msg -> prettyManagerLog msg
+  LogSampler msg -> prettySamplerLog msg
+
+-- | A `Logger` that writes to `stderr`.
+--
+--   @since 0.5.1.0
+stderrLogger :: Severity -> Logger (WithSev Log)
+stderrLogger sev =
+  filterSeverity (>= sev) $
+    contramap (prettyWithSev prettyLog) $
+      MkLogger (hPutStrLn stderr)
+
+-- | A `Logger` that writes to the eventlog using `traceEventIO`.
+--
+--   @since 0.5.1.0
+eventlogLogger :: Severity -> Logger (WithSev Log)
+eventlogLogger sev =
+  filterSeverity (>= sev) $
+    contramap (prettyWithSev prettyLog) $
+      MkLogger traceEventIO
 
 -- | A thread filter, used to determine which threads should be sampled.
 --
@@ -320,6 +378,11 @@ fromBool b = if b then Yes else No
 --   [@GHC_STACK_PROFILER_SAMPLE_INTERVAL@]:
 --     If set to any numeric value, `sampleInterval` is set to the `Interval` constructed using the value as milliseconds.
 --     If set to any non-numeric value, a warning is printed to `stderr` and the default `sampleInterval` is used.
+--   [@GHC_STACK_PROFILER_LOG_LEVEL@]:
+--     The log level used by the internal logger.
+--     Should be one of @TRACE@, @DEBUG@, @INFO@, @WARN@, @ERROR@, or @FATAL@.
+--     The default is @INFO@.
+--     (/Since: 0.5.1.0./)
 --
 --   __Warning:__ This function reads environment variables, which is not thread-safe.
 --                See [@getenv@](https://en.cppreference.com/c/program/getenv).
@@ -349,12 +412,31 @@ fromEnv = do
               Nothing -> do
                 hPutStrLn stderr $
                   printf
-                    "Could not parse the value of %s. Expected a number, found %s"
+                    "Could not parse the value of %s. Expected a number, found %s."
                     sampleIntervalVar
                     sampleIntervalMillisString
                 pure $ sampleInterval defaultOptions
               Just sampleIntervalMillis ->
                 pure $ MkIntervalMillis sampleIntervalMillis
+      !sampleProfilerLogLevel <-
+        lookupEnv logLevelVar >>= \case
+          Nothing ->
+            pure INFO
+          Just logLevel -> do
+            !sev <-
+              case readMaybe (map toUpper logLevel) of
+                Nothing -> do
+                  printf
+                    "Could not parse the value of %s. Excepted one of %s, found %s."
+                    logLevelVar
+                    (intercalate ", " (map show [TRACE .. FATAL]))
+                  pure INFO
+                Just sev ->
+                  pure sev
+            pure sev
+      let
+        sampleProfilerLogger =
+          stderrLogger sampleProfilerLogLevel
       pure $
         Just
           MkOptions
@@ -362,6 +444,7 @@ fromEnv = do
             , shouldSample
             , sampleRtsThreads
             , sampleProfilerThreads
+            , sampleProfilerLogger
             , sampleInterval
             }
  where
@@ -376,6 +459,9 @@ fromEnv = do
 
   waitVar :: String
   waitVar = "GHC_STACK_PROFILER_WAIT"
+
+  logLevelVar :: String
+  logLevelVar = "GHC_STACK_PROFILER_LOG_LEVEL"
 
   sampleIncludeVar :: String
   sampleIncludeVar = "GHC_STACK_PROFILER_SAMPLE_INCLUDE"
@@ -413,17 +499,23 @@ fromEnv = do
 --
 --   @since 0.5.0.0
 withManager ::
+  -- | Log messages
+  Logger (WithSev Log) ->
   -- | Flag that determines if sampler threads should wait.
   Bool ->
   -- | The action that runs with the `Manager`.
   (Manager -> IO a) ->
   IO a
-withManager wait action =
-  bracket (startManager wait) stopManager action
+withManager logger wait action =
+  bracket (startManager logger wait) stopManager action
 
 -- | Start a `Manager`.
 --
---   The first argument indicates if sampler threads should wait for a call to
+--   The first argument is the log object for this `Manager`.
+--   See `eventlogLogger` or `stderrLogger` to get logs,
+--   or use `emptyLogger` to discard all log messages.
+--
+--   The second argument indicates if sampler threads should wait for a call to
 --  `startProfiling` or a "start profiling" command on the eventlog socket.
 --   If you are using @ghc-stack-profiler@ with @eventlog-socket@'s control
 --   commands, this should be set to @True@.
@@ -434,10 +526,10 @@ withManager wait action =
 --   __Warning:__ The manager should be stopped with `stopManager`.
 --
 --   @since 0.5.0.0
-startManager :: Bool -> IO Manager
-startManager wait = do
+startManager :: Logger (WithSev Log) -> Bool -> IO Manager
+startManager logger wait = do
   -- TODO: Detect if the event loop thread is running and throw an error.
-  manager <- newManager wait
+  manager <- newManager (cmapWithSev LogManager logger) wait
   startEventLoop manager
   Eventlog.Socket.registerWithEventlogSocket manager
   pure manager
@@ -453,28 +545,29 @@ startManager wait = do
 --   __Warning:__ If the action creates a new thread, it /will not/ be sampled.
 --
 --   @since 0.5.0.0
-withSamplerForMe :: Manager -> Interval -> (Sampler -> IO a) -> IO a
-withSamplerForMe manager interval action = do
+withSamplerForMe :: Logger (WithSev Log) -> Manager -> Interval -> (Sampler -> IO a) -> IO a
+withSamplerForMe logger manager interval action = do
   myThreadId >>= \threadId ->
-    withSampler (samplerFor manager threadId interval) action
+    withSampler (samplerFor logger manager threadId interval) action
 
 -- | Start a sampler for the given `ThreadId`.
 --
 --   __Warning:__ The sampler should be stopped using `stopSampler` or `stopManager`.
 --
 --   @since 0.5.0.0
-startSamplerFor :: Manager -> ThreadId -> Interval -> IO Sampler
-startSamplerFor manager threadId interval =
-  startSampler (samplerFor manager threadId interval)
+startSamplerFor :: Logger (WithSev Log) -> Manager -> ThreadId -> Interval -> IO Sampler
+startSamplerFor logger manager threadId interval =
+  startSampler (samplerFor logger manager threadId interval)
 
 -- | Internal helper.
 --
 --   Create a `SamplerDescr` that samples a single thread.
-samplerFor :: Manager -> ThreadId -> Interval -> SamplerDescr
-samplerFor samplerManager threadId sampleInterval =
-  MkSamplerDescr{samplerManager, samplerThreads, sampleInterval}
+samplerFor :: Logger (WithSev Log) -> Manager -> ThreadId -> Interval -> SamplerDescr
+samplerFor logger samplerManager threadId sampleInterval =
+  MkSamplerDescr{samplerManager, samplerThreads, sampleInterval, samplerLogger}
  where
   samplerThreads = pure [threadId]
+  samplerLogger = cmapWithSev LogSampler logger
 
 -- | Start a sampler with the given `Options`.
 --
@@ -484,22 +577,26 @@ samplerFor samplerManager threadId sampleInterval =
 --   __Warning:__ The sampler should be stopped using `stopSampler` or `stopManager`.
 --
 --   @since 0.5.0.0
-startSamplerWith :: Manager -> Options -> IO Sampler
-startSamplerWith manager options = do
+startSamplerWith :: Logger (WithSev Log) -> Manager -> Options -> IO Sampler
+startSamplerWith logger manager options = do
   neverSetRef <- newIORef Set.empty
-  startSampler (samplerWith manager neverSetRef options)
+  startSampler (samplerWith logger manager neverSetRef options)
 
 -- | Internal helper.
 --
 --   Create a `SamplerDescr` for the given `Options`.
 samplerWith ::
+  Logger (WithSev Log) ->
   Manager ->
   IORef (Set ThreadId) ->
   Options ->
   SamplerDescr
-samplerWith samplerManager neverSetRef options =
-  MkSamplerDescr{samplerManager, samplerThreads, sampleInterval}
+samplerWith logger samplerManager neverSetRef options =
+  MkSamplerDescr{samplerManager, samplerThreads, sampleInterval, samplerLogger}
  where
+  samplerLogger =
+    cmapWithSev LogSampler logger
+
   MkOptions
     { shouldSample
     , sampleRtsThreads = fromBool -> shouldSampleRtsThreads

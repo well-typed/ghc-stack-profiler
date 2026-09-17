@@ -4,6 +4,8 @@ module GHC.Stack.Profiler.Internal.Sampler (
   withSampler,
   startSampler,
   stopSampler,
+  SamplerLog (..),
+  prettySamplerLog,
 ) where
 
 import Control.Concurrent (ThreadId, myThreadId, threadCapability, threadDelay)
@@ -22,15 +24,18 @@ import GHC.Conc.Sync (fromThreadId)
 import GHC.Internal.Control.Monad (forever)
 import GHC.Stack.CloneStack (cloneThreadStack)
 import qualified GHC.Stack.Profiler.Core as GSPC
+
 import GHC.Stack.Profiler.Internal.Decode (
   CallStackSample (..),
   decodeToCallStack,
   serializeCallStack,
   serializeMessages,
  )
+import GHC.Stack.Profiler.Internal.Logger
 import GHC.Stack.Profiler.Internal.Manager (
   ControlMessage (..),
   Manager (..),
+  ManagerLog (..),
   Sampler (..),
   cancelSampler,
   registerSamplerThread,
@@ -76,8 +81,16 @@ intervalMicros = (* 1_000) . intervalMillis
 data SamplerDescr = MkSamplerDescr
   { samplerManager :: Manager
   , samplerThreads :: IO [ThreadId]
+  , samplerLogger :: Logger (WithSev SamplerLog)
   , sampleInterval :: !Interval
   }
+
+data SamplerLog
+  = LogStartSampler
+
+prettySamplerLog :: SamplerLog -> String
+prettySamplerLog = \case
+  LogStartSampler -> "Starting sampler"
 
 withSampler :: SamplerDescr -> (Sampler -> IO a) -> IO a
 withSampler sampler action =
@@ -88,9 +101,10 @@ withSampler sampler action =
 
 -- | Run a `SamplerDescr`.
 startSampler :: SamplerDescr -> IO Sampler
-startSampler sampler@MkSamplerDescr{samplerManager, sampleInterval} = do
+startSampler sampler@MkSamplerDescr{samplerManager, sampleInterval, samplerLogger} = do
   barrier <- newEmptyMVar
   samplerAsync <- async $ do
+    logWithSev samplerLogger TRACE LogStartSampler
     () <- takeMVar barrier
     samplerThreadId <- myThreadId
     labelThread samplerThreadId $
@@ -116,7 +130,9 @@ startSampler sampler@MkSamplerDescr{samplerManager, sampleInterval} = do
 stopSampler :: Manager -> Sampler -> IO ()
 stopSampler manager samplerThread = do
   cancelSampler samplerThread
-    `finally` unregisterSamplerThread manager samplerThread
+    `finally` do
+      logWithSev (managerLogger manager) TRACE LogCancelSampler
+      unregisterSamplerThread manager samplerThread
 
 -- | Take one `CallStackSample` for every thread sampled by the `Sampler`.
 sampleThreads :: SamplerDescr -> IO ()
