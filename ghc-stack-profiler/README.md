@@ -80,7 +80,7 @@ To instrument your application with GHC Stack Profiler, you need to make four ch
 
       main :: IO ()
       main =
-    +   withProfilerFromEnv $
+    +   withProfilerFromEnv $ \_maybeProfiler ->
           ...
     ```
 
