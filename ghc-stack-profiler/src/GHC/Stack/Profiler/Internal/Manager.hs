@@ -11,6 +11,10 @@ module GHC.Stack.Profiler.Internal.Manager (
   unregisterSamplerThread,
   stopAllSamplerThreads,
 
+  -- * Logging
+  ManagerLog (..),
+  prettyManagerLog,
+
   -- * Sampler Threads
   Sampler (..),
   cancelSampler,
@@ -51,6 +55,7 @@ import qualified Debug.Trace.Binary.Compat as Compat
 import GHC.Generics (Generic)
 import qualified GHC.Stack.Profiler.Core as GSPC (Message (ProtocolVersion), ProtocolVersion (MyProtocolVersion))
 import qualified GHC.Stack.Profiler.Internal.Decode as Decode
+import GHC.Stack.Profiler.Internal.Logger
 import GHC.Stack.Profiler.Internal.SymbolTable
 
 -- NOTE: The `Manager` type (but not its implementation) is part of the public API.
@@ -79,11 +84,34 @@ data Manager = MkManager
   -- or stopped/started via @eventlog-socket@.
   -- This variable tracks the state of the eventlog-writer.
   , messageChan :: Chan ControlMessage
+  , managerLogger :: Logger (WithSev ManagerLog)
+  -- ^ Logger for all things related to the `Manager`.
   }
-  deriving (Generic, Eq)
+  deriving (Generic)
 
-newManager :: Bool -> IO Manager
-newManager wait = do
+data ManagerLog
+  = LogStartProfiling
+  | LogStopProfiling
+  | LogStartEventlog
+  | LogStopEventlog
+  | LogCancelSampler
+  | LogPublishInitEvents !Int
+  | LogDiscardedMessage
+  | LogProfilerMessages !Int
+
+prettyManagerLog :: ManagerLog -> String
+prettyManagerLog = \case
+  LogStartProfiling -> "Start profiling"
+  LogStopProfiling -> "Stop profiling"
+  LogStartEventlog -> "Start writing to the eventlog"
+  LogStopEventlog -> "Stop writing to the eventlog"
+  LogPublishInitEvents n -> "Published " ++ show n ++ " initialisation events"
+  LogCancelSampler -> "Cancelled the sampler"
+  LogDiscardedMessage -> "Discarded a message that came in while not profiling"
+  LogProfilerMessages n -> "Published " ++ show n ++ " message chunks"
+
+newManager :: Logger (WithSev ManagerLog) -> Bool -> IO Manager
+newManager managerLogger wait = do
   tracingEnabled <- Compat.userTracingEnabledIO
   samplerThreadMapVar <- newTVarIO Map.empty
   eventLoopThreadVar <- newTVarIO Nothing
@@ -99,6 +127,7 @@ newManager wait = do
       , shouldSampleVar
       , eventLoggingStartedVar
       , messageChan
+      , managerLogger
       }
 
 -- NOTE: `stopManager` is part of the public API.
@@ -214,23 +243,29 @@ eventHandler manager = do
   case msg of
     WriteProfileSample msgs ->
       case run of
-        True ->
+        True -> do
+          logWithSev logger TRACE (LogProfilerMessages $ length msgs)
           mapM_ Compat.traceBinaryEventIO msgs
-        False ->
+        False -> do
+          logWithSev logger DEBUG LogDiscardedMessage
           -- If we received a sample but the eventlog is currently locked
           -- discard the message.
           pure ()
     StartProfiling barrier -> do
       atomically $ enableSampling manager
+      logWithSev logger TRACE LogStartProfiling
       putMVar barrier ()
     StopProfiling barrier -> do
       atomically $ disableSampling manager
+      logWithSev logger TRACE LogStopProfiling
       putMVar barrier ()
     StartEventlog barrier -> do
       atomically $ enableEventLogging manager
+      logWithSev logger TRACE LogStartEventlog
       putMVar barrier ()
     StopEventlog barrier -> do
       atomically $ disableEventLogging manager
+      logWithSev logger TRACE LogStopEventlog
       putMVar barrier ()
     PublishInitEvents barrier -> do
       symbolTable <- atomically $ readSymbolTable (symbolTableRef manager)
@@ -243,7 +278,10 @@ eventHandler manager = do
         Compat.traceBinaryEventIO (BSL.toStrict binaryMessage)
 
       Debug.Trace.flushEventLog
+      logWithSev logger TRACE (LogPublishInitEvents $ length messages)
       putMVar barrier ()
+ where
+  logger = managerLogger manager
 
 stopEventLoop :: Manager -> IO ()
 stopEventLoop manager = do
