@@ -23,6 +23,7 @@ import Data.Machine.MealyT (scanMealyTM)
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
 import Data.Maybe (fromMaybe, isNothing, listToMaybe)
+import Data.Ord (Down (..))
 import Data.Text (Text)
 import qualified Data.Text as Text
 import Data.Version (Version, makeVersion)
@@ -133,7 +134,7 @@ processEventlogProfile aggregationMode (isolateStart, isolateEnd) considerEvent 
 processEventlogProfileState ::
   AggregationMode ->
   EventlogProfileState ->
-  (EventlogProfile, [[EventlogError]])
+  (EventlogProfile, ProcessingErrors)
 processEventlogProfileState aggregationMode st = (profile, st.processingErrors)
  where
   programName :: Text
@@ -153,16 +154,16 @@ processEventlogProfileState aggregationMode st = (profile, st.processingErrors)
       }
 
 -- | Pretty-print the eventlog processing errors.
-logEventlogErrors :: [[EventlogError]] -> IO ()
-logEventlogErrors = \case
-  [] -> pure ()
-  eventlogErrorStacks -> do
-    IO.hPutStrLn IO.stderr $ show (length eventlogErrorStacks) ++ " CallStacks were decoded incompletely or not at all."
-    for_ eventlogErrorStacks $ \eventlogErrorStack -> do
+logEventlogErrors :: ProcessingErrors -> IO ()
+logEventlogErrors ProcessingErrors{decodingErrors, failedCallStacks} =
+  if failedCallStacks <= 0
+    then pure ()
+    else do
+      IO.hPutStrLn IO.stderr $ show failedCallStacks ++ " CallStacks were decoded incompletely or not at all."
       let
-        size = length eventlogErrorStack
-      for_ (take 10 eventlogErrorStack) $ \err -> do
-        IO.hPutStrLn IO.stderr ("  " ++ prettyEventlogError err)
+        size = Map.size decodingErrors
+      for_ (take 10 (sortOn (Down . snd) $ Map.toList decodingErrors)) $ \(err, count) -> do
+        IO.hPutStrLn IO.stderr ("  " ++ prettyEventlogError err ++ "(" ++ show count ++ ")")
       when (size > 10) $ do
         IO.hPutStrLn IO.stderr ("  ... and " ++ show (size - 10) ++ " more.")
 
@@ -333,7 +334,7 @@ data EventlogProfileState = EventlogProfileState
   -- ^ Chunks of 'CallStackChunk' we are currently decoding.
   -- All chunks are assumed to be from the same callstack and will be decoded once a
   -- 'CallStackFinal' message is encountered.
-  , processingErrors :: [[EventlogError]]
+  , processingErrors :: ProcessingErrors
   }
 
 emptyEventlogProfileState :: EventlogProfileState
@@ -346,13 +347,29 @@ emptyEventlogProfileState =
     , samples = []
     , hydration_table = GSPC.emptyIntMapTable
     , current_callstack_chunks = []
-    , processingErrors = []
+    , processingErrors =
+        ProcessingErrors
+          { decodingErrors = Map.empty
+          , failedCallStacks = 0
+          }
     }
+
+data ProcessingErrors = ProcessingErrors
+  { decodingErrors :: !(Map EventlogError Int)
+  , failedCallStacks :: !Int
+  }
 
 addDecodingErrorsForStack :: [EventlogError] -> EventlogProfileState -> EventlogProfileState
 addDecodingErrorsForStack errs elProf
   | null errs = elProf
-  | otherwise = elProf{processingErrors = errs : processingErrors elProf}
+  | otherwise = elProf{processingErrors = addProcessingErrors (processingErrors elProf)}
+ where
+  addProcessingErrors :: ProcessingErrors -> ProcessingErrors
+  addProcessingErrors pe =
+    pe
+      { decodingErrors = Map.unionWith (+) (decodingErrors pe) (Map.fromList $ zip errs (repeat 1))
+      , failedCallStacks = failedCallStacks pe + 1
+      }
 
 --------------------------------------------------------------------------------
 -- Decoding errors
