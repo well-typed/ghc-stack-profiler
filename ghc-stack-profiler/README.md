@@ -4,7 +4,7 @@ _A light-weight call-stack profiler for GHC!_
 
 # GHC Stack Profiler
 
-> ⚠️ **Warning:** This package is experimental. It is versioned according to the PVP. Breaking changes should be expected and no effort will be made to avoid major version bumps.
+> ⚠️ **Warning:** This package is under active development. It is versioned according to the PVP. Breaking changes should be expected and no effort will be made to avoid major version bumps.
 
 > ⚠️ **Warning:** Due to a bug in GHC, copying the call-stack may cause a segfault at runtime in applications built with GHC 9.14.1 and older. If you use GHC Stack Profiler in production, you should build your application with GHC 9.14.2 or newer.
 
@@ -22,14 +22,16 @@ The following is a screenshot of [speedscope](https://www.speedscope.app/) that 
 
 ## Table of Contents
 
-- [Getting Started](#getting-started)
-  - [Instrument your application with GHC Stack Profiler](#instrument-your-application-with-ghc-stack-profiler)
-  - [GHC Stack Profiler with Speedscope](#ghc-stack-profiler-with-speedscope)
-  - [GHC Stack Profiler with Eventlog Live – Real-Time Call-Stack Profiles](#ghc-stack-profiler-with-eventlog-live-real-time-call-stack-profiles)
-  - [GHC Stack Profiler with Eventlog Socket – Dynamic Control](#ghc-stack-profiler-with-eventlog-socket--dynamic-control)
-- [Benchmarks](#benchmarks)
-  - [Benchmark: Agda 2.8.0.1 checking the standard library](#benchmark-agda-2801-checking-the-standard-library)
-  - [Benchmark: GHC 10.1 loading `Cabal-syntax`](#benchmark-ghc-101-loading-cabal-syntax)
+- [GHC Stack Profiler](#ghc-stack-profiler)
+  - [Table of Contents](#table-of-contents)
+  - [Getting Started](#getting-started)
+    - [Instrument your application with GHC Stack Profiler](#instrument-your-application-with-ghc-stack-profiler)
+    - [GHC Stack Profiler with Speedscope](#ghc-stack-profiler-with-speedscope)
+    - [GHC Stack Profiler with Eventlog Live – Real-Time Call-Stack Profiles](#ghc-stack-profiler-with-eventlog-live-real-time-call-stack-profiles)
+    - [GHC Stack Profiler with Eventlog Socket – Dynamic Control](#ghc-stack-profiler-with-eventlog-socket--dynamic-control)
+  - [Benchmarks](#benchmarks)
+    - [Benchmark: Agda 2.8.0.1 checking the standard library](#benchmark-agda-2801-checking-the-standard-library)
+    - [Benchmark: GHC 10.1 loading `Cabal-syntax`](#benchmark-ghc-101-loading-cabal-syntax)
 
 ## Getting Started
 
